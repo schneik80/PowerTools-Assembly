@@ -7,7 +7,7 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_NAME = "Reference Manager"
-CMD_ID = "PTND-refmanager"
+CMD_ID = "PTAT-refmanager"
 CMD_Description = "See all references and manage updates"
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
@@ -41,7 +41,7 @@ def start():
 
     qat = ui.toolbars.itemById("QAT")
 
-    control = qat.controls.addCommand(cmd_def, "PTND-GetandUpdate", True)
+    control = qat.controls.addCommand(cmd_def, "PTAT-GetandUpdate", True)
 
 
 # Executed when add-in is stopped.

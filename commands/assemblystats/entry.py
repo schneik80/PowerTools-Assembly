@@ -7,7 +7,7 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_NAME = "Assembly Statistics"
-CMD_ID = "PTND-assemblystats"
+CMD_ID = "PTAT-assemblystats"
 CMD_Description = "Assembly statistics on component counts, assembly levels and Joints"
 IS_PROMOTED = False
 

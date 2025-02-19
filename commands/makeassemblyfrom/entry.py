@@ -8,7 +8,7 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_NAME = "Make Assembly from Part"
-CMD_ID = "PTND-assemblyfrom"
+CMD_ID = "PTAT-assemblyfrom"
 CMD_Description = "Create a new assembly referencing the active document. The active document must be a 3D design.\nThe assembly will open as an unsaved document, in a new tab with a default name, and can be renamed on first save."
 
 # Local list of event handlers used to maintain a reference so

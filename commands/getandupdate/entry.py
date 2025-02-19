@@ -7,7 +7,7 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_NAME = "Get and Update"
-CMD_ID = "PTND-GetandUpdate"
+CMD_ID = "PTAT-getandupdate"
 CMD_Description = (
     "Get any new versions and then update all out-of-date assembly contexts."
 )

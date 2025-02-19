@@ -7,7 +7,7 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_NAME = "Insert STEP File"
-CMD_ID = "PTND-insertSTEP"
+CMD_ID = "PTAT-insertSTEP"
 CMD_Description = "Insert a STEP file into the active Design Document"
 IS_PROMOTED = False
 
