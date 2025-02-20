@@ -21,15 +21,7 @@ PANEL_NAME = config.my_panel_name
 PANEL_AFTER = config.my_panel_after
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
-Theme = app.preferences.generalPreferences.userInterfaceTheme
-if Theme == 0:
-    ICON_FOLDER = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "resources", ""
-    )
-else:
-    ICON_FOLDER = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "resources/dark", ""
-    )
+ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
 
 # Holds references to event handlers
 local_handlers = []
