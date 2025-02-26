@@ -1,21 +1,12 @@
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .insertSTEP import entry as insertSTEP
-from .makeassemblyfrom import entry as makeassemblyfrom
 from .refmanager import entry as refmanager
 from .refrences import entry as refrences
 from .refresh import entry as refresh
 
 # Fusion will automatically call the start() and stop() functions.
-commands = [
-    assemblystats,
-    getandupdate,
-    insertSTEP,
-    makeassemblyfrom,
-    refmanager,
-    refrences,
-    refresh,
-]
+commands = [assemblystats, getandupdate, insertSTEP, refmanager, refrences, refresh]
 
 
 # Assumes you defined a "start" function in each of your modules.
