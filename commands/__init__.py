@@ -6,14 +6,7 @@ from .refrences import entry as refrences
 from .refresh import entry as refresh
 
 # Fusion will automatically call the start() and stop() functions.
-commands = [
-    assemblystats,
-    getandupdate,
-    insertSTEP,
-    refmanager,
-    refrences,
-    refresh,
-]
+commands = [assemblystats, getandupdate, insertSTEP, refmanager, refrences, refresh]
 
 
 # Assumes you defined a "start" function in each of your modules.
