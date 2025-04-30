@@ -1,7 +1,6 @@
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .insertSTEP import entry as insertSTEP
-from .makeassemblyfrom import entry as makeassemblyfrom
 from .refmanager import entry as refmanager
 from .refrences import entry as refrences
 from .refresh import entry as refresh
@@ -11,7 +10,6 @@ commands = [
     assemblystats,
     getandupdate,
     insertSTEP,
-    makeassemblyfrom,
     refmanager,
     refrences,
     refresh,
