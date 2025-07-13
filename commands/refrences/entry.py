@@ -121,12 +121,18 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         docParents = []
         docChildren = []
         docDrawings = []
+        docRelated = []
+        docFasteners = []
+        subString = " ‹+› "
 
         # Process parent and related data files
         if parentDataFiles:
             for file in parentDataFiles:
 
-                if file.fileExtension == "f2d":
+                if subString in file.name:
+                    target_list = docRelated
+
+                elif file.fileExtension == "f2d":
                     target_list = docDrawings
 
                 else:
@@ -138,40 +144,69 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
         # Process child data files
         if childDataFiles:
-            docChildren = [
-                {"name": file.name, "id": file.id} for file in childDataFiles
-            ]
+            for file in childDataFiles:
+
+                if file.parentProject.name == "Fasteners":
+                    target_list = docFasteners
+
+                else:
+                    target_list = docChildren
+
+                target_list.append(
+                    {"name": file.name, "id": file.id, "url": file.fusionWebURL}
+                )
 
         # Links String to report references
-        links = f"<h2>Source document: {html.escape(doc.name)}</h2>"
-        links += f"<h3>Parents ({len(docParents)}):</h3>"
+        links = f""
 
         if docParents:
+            links += f"<h3>Parents ({len(docParents)}):</h3>"
             for item in docParents:
                 links += f'{(item["name"])}<br>'
-        else:
-            links += f"No Parent Relationships"
-
-        links += f"<h3>Children ({len(docChildren)}):</h3>"
 
         if docChildren:
+            links += f"<h3>Children ({len(docChildren)}):</h3>"
             for item in docChildren:
                 links += f'{(item["name"])}<br>'
-        else:
-            links += f"No Child Relationships<br>"
-
-        links += f"<h3>Drawings ({len(docDrawings)}):</h3>"
 
         if docDrawings:
+            links += f"<h3>Drawings ({len(docDrawings)}):</h3>"
             for item in docDrawings:
                 links += f'{(item["name"])}<br>'
+
+        if docRelated:
+            links += f"<h3>Related Data ({len(docRelated)}):</h3>"
+            for item in docRelated:
+                links += f'{(item["name"])}<br>'
+
+        if docFasteners:
+            links += f"<h3>Fasteners ({len(docFasteners)}):</h3>"
+            for item in docFasteners:
+                links += f'{(item["name"])}<br>'
+
+        # total relationship count
+        # This is the total number of relationships found in the document.
+        relationshipCount = (
+            len(docParents)
+            + len(docChildren)
+            + len(docDrawings)
+            + len(docRelated)
+            + len(docFasteners)
+        )
+
+        # If no relationships found, show a message box
+        if relationshipCount == 0:
+            ui.messageBox(
+                "Document's current version has no references",
+                f"{doc.name}",
+                0,
+                2,
+            )
+        # If relationships found, show a message box with the links
         else:
-            links += f"No Drawings<br>"
+            relationsTitle = f"References ({relationshipCount})"
 
-        relationshipCount = len(docParents) + len(docChildren) + len(docDrawings)
-        relationsTitle = f"References ({relationshipCount})"
-
-        ui.messageBox(links, relationsTitle, 0, 2)
+            ui.messageBox(links, f"{doc.name} - {relationsTitle}", 0, 2)
 
     except:
         if ui:
