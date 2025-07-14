@@ -154,14 +154,14 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
                         docFasteners.append(file_data)
                     else:
                         # Check if this is a configuration
-                        if hasattr(file, 'isConfiguration') and file.isConfiguration:
+                        if hasattr(file, "isConfiguration") and file.isConfiguration:
                             file_data["name"] += " (configuration)"
                         docChildren.append(file_data)
                 except:
                     # If parentProject is not accessible, treat as regular child
                     # Still check for configuration status
                     try:
-                        if hasattr(file, 'isConfiguration') and file.isConfiguration:
+                        if hasattr(file, "isConfiguration") and file.isConfiguration:
                             file_data["name"] += " (configuration)"
                     except:
                         pass
