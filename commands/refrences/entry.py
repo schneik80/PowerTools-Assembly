@@ -118,12 +118,19 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
         parentDataFiles = doc.designDataFile.parentReferences
         childDataFiles = doc.designDataFile.childReferences
+        totalRefs = parentDataFiles.count + childDataFiles.count
         docParents = []
         docChildren = []
         docDrawings = []
         docRelated = []
         docFasteners = []
         subString = " ‹+› "
+        linkError = False
+
+        progressBar = ui.progressBar
+        progressBar
+        progressBar.showBusy("Getting Document's References Link", True)
+        adsk.doEvents
 
         # Create file_data dictionary template
         def make_file_data(file):
@@ -137,6 +144,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         # Process parent and related data files in one pass
         if parentDataFiles:
             for file in parentDataFiles:
+
                 file_data = make_file_data(file)
                 if subString in file.name:
                     docRelated.append(file_data)
@@ -148,6 +156,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         # Process child data files in one pass
         if childDataFiles:
             for file in childDataFiles:
+
                 file_data = make_file_data(file)
                 try:
                     if file.parentProject.name == "Fasteners":
@@ -173,49 +182,65 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         if docParents:
             links += f"<h3>Parents ({len(docParents)}):</h3>"
             for item in docParents:
-                links += f'{(item["name"])}<br>'
+                if item["url"]:
+                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
+                else:
+                    links += f'{item["name"]}<br>'
+                    linkError = True
 
         if docChildren:
             links += f"<h3>Children ({len(docChildren)}):</h3>"
             for item in docChildren:
-                links += f'{(item["name"])}<br>'
+                if item["url"]:
+                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
+                else:
+                    links += f'{item["name"]}<br>'
+                    linkError = True
 
         if docDrawings:
             links += f"<h3>Drawings ({len(docDrawings)}):</h3>"
             for item in docDrawings:
-                links += f'{(item["name"])}<br>'
+                if item["url"]:
+                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
+                else:
+                    links += f'{item["name"]}<br>'
+                    linkError = True
 
         if docRelated:
             links += f"<h3>Related Data ({len(docRelated)}):</h3>"
             for item in docRelated:
-                links += f'{(item["name"])}<br>'
+                if item["url"]:
+                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
+                else:
+                    links += f'{item["name"]}<br>'
+                    linkError = True
 
         if docFasteners:
             links += f"<h3>Fasteners ({len(docFasteners)}):</h3>"
             for item in docFasteners:
-                links += f'{(item["name"])}<br>'
+                if item["url"]:
+                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
+                else:
+                    links += f'{item["name"]}<br>'
+                    linkError = True
 
-        # total relationship count
-        # This is the total number of relationships found in the document.
-        relationshipCount = (
-            len(docParents)
-            + len(docChildren)
-            + len(docDrawings)
-            + len(docRelated)
-            + len(docFasteners)
-        )
+        # Hide the progress bar
+        progressBar.hide()
 
-        # If no relationships found, show a message box
-        if relationshipCount == 0:
+        if linkError == True:
+            links += f"<br><b>Note:</b> Some links may not be accessible due to permissions or other issues.<br>"
+            # If no relationships found, show a message box
+        if totalRefs == 0:
             ui.messageBox(
                 "Document's current version has no references",
                 f"{doc.name}",
                 0,
                 2,
             )
+
         # If relationships found, show a message box with the links
         else:
-            relationsTitle = f"References ({relationshipCount})"
+            relationsTitle = f"References {totalRefs} "
 
             ui.messageBox(links, f"{doc.name} - {relationsTitle}", 0, 2)
 
