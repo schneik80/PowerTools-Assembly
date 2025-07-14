@@ -1,5 +1,6 @@
 import adsk.core, adsk.fusion
 import html, os, traceback
+from urllib.parse import quote
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -128,7 +129,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         linkError = False
 
         progressBar = ui.progressBar
-        progressBar
+
         progressBar.showBusy("Getting Document's References Link", True)
         adsk.doEvents
 
@@ -137,9 +138,24 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             url = None
             try:
                 url = file.fusionWebURL
+                shareLink = f"fusion360://lineageUrn="
+                shareLink += quote(file.id)
+
+                shareLink += "&hubUrl="
+                galilleoUrl = (
+                    app.activeDocument.dataFile.parentProject.parentHub.fusionWebURL
+                )
+                stripGalilleo = (
+                    galilleoUrl.replace(" ", "").rstrip(galilleoUrl[-3:]).upper()
+                )
+                shareLink += quote(stripGalilleo)
+
+                shareLink += "&documentName="
+                shareLink += quote(app.activeDocument.name)
+
             except:
                 url = None
-            return {"name": file.name, "id": file.id, "url": url}
+            return {"name": file.name, "id": file.id, "url": shareLink}
 
         # Process parent and related data files in one pass
         if parentDataFiles:
