@@ -125,36 +125,47 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         docFasteners = []
         subString = " ‹+› "
 
-        # Process parent and related data files
+        # Create file_data dictionary template
+        def make_file_data(file):
+            url = None
+            try:
+                url = file.fusionWebURL
+            except:
+                url = None
+            return {"name": file.name, "id": file.id, "url": url}
+
+        # Process parent and related data files in one pass
         if parentDataFiles:
             for file in parentDataFiles:
-
+                file_data = make_file_data(file)
                 if subString in file.name:
-                    target_list = docRelated
-
+                    docRelated.append(file_data)
                 elif file.fileExtension == "f2d":
-                    target_list = docDrawings
-
+                    docDrawings.append(file_data)
                 else:
-                    target_list = docParents
+                    docParents.append(file_data)
 
-                target_list.append(
-                    {"name": file.name, "id": file.id, "url": file.fusionWebURL}
-                )
-
-        # Process child data files
+        # Process child data files in one pass
         if childDataFiles:
             for file in childDataFiles:
-
-                if file.parentProject.name == "Fasteners":
-                    target_list = docFasteners
-
-                else:
-                    target_list = docChildren
-
-                target_list.append(
-                    {"name": file.name, "id": file.id, "url": file.fusionWebURL}
-                )
+                file_data = make_file_data(file)
+                try:
+                    if file.parentProject.name == "Fasteners":
+                        docFasteners.append(file_data)
+                    else:
+                        # Check if this is a configuration
+                        if hasattr(file, 'isConfiguration') and file.isConfiguration:
+                            file_data["name"] += " (configuration)"
+                        docChildren.append(file_data)
+                except:
+                    # If parentProject is not accessible, treat as regular child
+                    # Still check for configuration status
+                    try:
+                        if hasattr(file, 'isConfiguration') and file.isConfiguration:
+                            file_data["name"] += " (configuration)"
+                    except:
+                        pass
+                    docChildren.append(file_data)
 
         # Links String to report references
         links = f""
