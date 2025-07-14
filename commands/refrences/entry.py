@@ -128,7 +128,6 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         linkError = False
 
         progressBar = ui.progressBar
-        progressBar
         progressBar.showBusy("Getting Document's References Link", True)
         adsk.doEvents
 
