@@ -148,13 +148,40 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         statsList = [
             re.sub(pattern, "", e) for e in statsListSplit
         ]  # strip list numbering from list
+
+        try:
+            # force get compute time
+            docComputeTimes = app.executeTextCommand("fusion.computetime /f")
+            # Extract the serial compute time from the second line
+            docComputelong = (
+                docComputeTimes.strip().split("\n")[1].split(":", 1)[1].strip()
+            )
+            docComputeshort = "{:.2g}".format(float(docComputelong))
+            # construct the compute time string
+            docCompute = f"{docComputeshort} seconds"
+
+        except:
+            docCompute = f"<i>Error. Unable to retrieve compute time.</i>"
+
+        docConstraints = rootComp.assemblyConstraints.count
+        docTangents = rootComp.tangentRelationships.count
+        docRigidGroups = rootComp.rigidGroups.count
+
         resultString = (
+            f"<b>Document Compute:</b><br>"
+            f"Compute time: {docCompute} <br>"
+            f"<br>"
             f"{statsList[1]} <br>"
             f"{statsList[2]} <br>"
             f"Total number of unique components: {total_unique} <br>"
             f"{statsList[3]} <br>"
             f"<br>"
-            f"<b>Joint Information:</b><br>"
+            f"<b>Relationship Information:</b><br>"
+            f"Total number of Constraints: {docConstraints} <br>"
+            f"<br>"
+            f"Total number of Tangent Relationships: {docTangents} <br>"
+            f"<br>"
+            f"Joints:<br>"
             f" - {statsList[4]} <br>"
             f" - {statsList[5]} <br>"
             f" - {statsList[6]} <br>"
@@ -168,6 +195,8 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             f" - {statsList[14]} <br>"
             f" - {statsList[15]} <br>"
             f" - {statsList[16]} <br>"
+            f"<br>"
+            f"Total number of Rigid Groups: {docRigidGroups}"
         )
 
         # Display results in a MESSAGE BOX.
