@@ -120,6 +120,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
     try:
 
+        # Get the application and user interface objects.
         app = adsk.core.Application.get()
         ui = app.userInterface
 
@@ -127,7 +128,18 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         rootComp = design.rootComponent
 
         # Get the document details
-        root_name = design.rootComponent.name  # Get root component name.
+        root_name = design.rootComponent.name
+        # get out of date references
+        try:
+            # Count out of date references
+            out_of_date_refs = sum(
+                1 for ref in app.activeDocument.documentReferences if ref.isOutOfDate
+            )
+            adsk.core.Application.log(f"Out of date references: {out_of_date_refs}")
+        except Exception as e:
+            adsk.core.Application.log(f"Error counting out of date references: {e}")
+
+        # Get the total number of unique components and total components.
         total_unique = (
             design.allComponents.count - 1
         )  # Get unique components, subtract 1 to remove for root component.
@@ -140,6 +152,8 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         adsk.core.Application.log(f"Unique components: {total_unique}")
         adsk.core.Application.log(f"Total components: {total_count}")
 
+        # Get the assembly statistics
+        # Use a regex pattern to match the text commands number/text list output
         pattern = (
             r".[a-zA-Z]\.+\D|\d\.+\D"  # match the text commands number/text list output
         )
@@ -149,6 +163,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             re.sub(pattern, "", e) for e in statsListSplit
         ]  # strip list numbering from list
 
+        # Get the compute time for the document
         try:
             # force get compute time
             docComputeTimes = app.executeTextCommand("fusion.computetime /f")
@@ -163,6 +178,16 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         except:
             docCompute = f"<i>Error. Unable to retrieve compute time.</i>"
 
+        # Get the number of contexts in the timeline
+        try:
+            docTimeline = app.executeTextCommand("timeline.print")
+            docContexts = sum(
+                1 for line in docTimeline.strip().split("\n") if "Context" in line
+            )
+        except:
+            docContexts = f"<i>Error. Unable to retrieve timeline contexts.</i>"
+            adsk.core.Application.log("Error retrieving timeline contexts.")
+
         docConstraints = rootComp.assemblyConstraints.count
         docTangents = rootComp.tangentRelationships.count
         docRigidGroups = rootComp.rigidGroups.count
@@ -171,15 +196,18 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             f"<b>Document Compute:</b><br>"
             f"Compute time: {docCompute} <br>"
             f"<br>"
+            f"<b>Assembly Components:</b><br>"
             f"{statsList[1]} <br>"
             f"{statsList[2]} <br>"
             f"Total number of unique components: {total_unique} <br>"
+            f"Total number of out-of-date components: {out_of_date_refs} <br>"
             f"{statsList[3]} <br>"
+            f"Number of document contexts: {docContexts} <br>"
             f"<br>"
             f"<b>Relationship Information:</b><br>"
-            f"Total number of Constraints: {docConstraints} <br>"
+            f"Number of document constraints: {docConstraints} <br>"
             f"<br>"
-            f"Total number of Tangent Relationships: {docTangents} <br>"
+            f"Number of document tangent Relationships: {docTangents} <br>"
             f"<br>"
             f"Joints:<br>"
             f" - {statsList[4]} <br>"
