@@ -129,7 +129,8 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
         # Get the document details
         root_name = design.rootComponent.name
-        # get out of date references
+
+        # get out-of-date references
         try:
             # Count out of date references
             out_of_date_refs = sum(
@@ -146,12 +147,6 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         total_count = rootComp.allOccurrences.count  # Get total components.
         mTitle = f"{root_name} Component Statistics"
 
-        # Display the result.
-        # Write the results to the TEXT COMMANDS window.
-        adsk.core.Application.log(f"{root_name}:")
-        adsk.core.Application.log(f"Unique components: {total_unique}")
-        adsk.core.Application.log(f"Total components: {total_count}")
-
         # Get the assembly statistics
         # Use a regex pattern to match the text commands number/text list output
         pattern = (
@@ -163,20 +158,20 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             re.sub(pattern, "", e) for e in statsListSplit
         ]  # strip list numbering from list
 
-        # Get the compute time for the document
-        try:
-            # force get compute time
-            docComputeTimes = app.executeTextCommand("fusion.computetime /f")
-            # Extract the serial compute time from the second line
-            docComputelong = (
-                docComputeTimes.strip().split("\n")[1].split(":", 1)[1].strip()
-            )
-            docComputeshort = "{:.2g}".format(float(docComputelong))
-            # construct the compute time string
-            docCompute = f"{docComputeshort} seconds"
+        # Get the compute time for the document (removed for now as it is dirties the document)
+        # try:
+        #     # force get compute time
+        #     docComputeTimes = app.executeTextCommand("fusion.computetime /f")
+        #     # Extract the serial compute time from the second line
+        #     docComputelong = (
+        #         docComputeTimes.strip().split("\n")[1].split(":", 1)[1].strip()
+        #     )
+        #     docComputeshort = "{:.2g}".format(float(docComputelong))
+        #     # construct the compute time string
+        #     docCompute = f"{docComputeshort} seconds"
 
-        except:
-            docCompute = f"<i>Error. Unable to retrieve compute time.</i>"
+        # except:
+        #     docCompute = f"<i>Error. Unable to retrieve compute time.</i>"
 
         # Get the number of contexts in the timeline
         try:
@@ -193,9 +188,9 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         docRigidGroups = rootComp.rigidGroups.count
 
         resultString = (
-            f"<b>Document Compute:</b><br>"
-            f"Compute time: {docCompute} <br>"
-            f"<br>"
+            # f"<b>Document Compute:</b><br>"
+            # f"Compute time: {docCompute} <br>"
+            # f"<br>"
             f"<b>Assembly Components:</b><br>"
             f"{statsList[1]} <br>"
             f"{statsList[2]} <br>"
