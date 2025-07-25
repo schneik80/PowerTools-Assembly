@@ -12,9 +12,9 @@ Insert STEP is particularly handy for creating devices for ECAD when you want to
 
 ## Access
 
-Access to the **Insert STEP file...** is from the Design Document's **Utilities** tab, In the **Tools** panel.
+Access to the **Insert STEP file...** Depends on if you have the new ***Assembly Tab** preview enabled. If the **Assembly Tab is active, thent the **Insert STEP file...** command is in the Assemble panel.
 
-![access](/docs/assets/insertstep_002.png)
+If the preview is not enabled, the **Insert STEP file...** command is in the **Insert** panel.
 
 [Back to Readme](../README.md)
 
