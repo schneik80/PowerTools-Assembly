@@ -11,14 +11,22 @@ CMD_ID = "PTAT-insertSTEP"
 CMD_Description = "Insert a STEP file into the active Design Document"
 IS_PROMOTED = False
 
-# Global variables by referencing values from /config.py
-WORKSPACE_ID = config.design_workspace
-TAB_ID = config.tools_tab_id
-TAB_NAME = config.my_tab_name
-
-PANEL_ID = config.my_panel_id
-PANEL_NAME = config.my_panel_name
-PANEL_AFTER = config.my_panel_after
+# Place insert STEP in the Assembly, Insert tab of the Fusion UI.
+WORKSPACE_ID = "FusionSolidEnvironment"
+# Check if the assembly tab exists in FusionSolidEnvironment
+ASSYtbID = "AssemblyTab"
+workspace = ui.workspaces.itemById(WORKSPACE_ID)
+if workspace.toolbarTabs.itemById(ASSYtbID):
+    TAB_ID = "AssemblyTab"
+    TAB_NAME = "ASSEMBLY"
+    PANEL_ID = "AssemblyAssemblePanel"
+    PANEL_NAME = "Assemble"
+else:
+    # If not, use the default tab for the FusionSolidEnvironment
+    TAB_ID = "SolidTab"
+    TAB_NAME = "SOLID"
+    PANEL_ID = "InsertPanel"
+    PANEL_NAME = "Insert"
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
@@ -50,7 +58,7 @@ def start():
     # Get target panel for the command and and create the panel if necessary.
     panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
     if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
+        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME)
 
     # Create the command control, i.e. a button in the UI.
     control = panel.controls.addCommand(cmd_def, "PT-assemblystats", True)
