@@ -12,7 +12,7 @@ Insert STEP is particularly handy for creating devices for ECAD when you want to
 
 ## Access
 
-Access to the **Insert STEP file...** Depends on if you have the new ***Assembly Tab** preview enabled. If the **Assembly Tab is active, thent the **Insert STEP file...** command is in the Assemble panel.
+Access to the **Insert STEP file...** Depends on if you have the new ***Assembly Tab** preview enabled. If the **Assembly Tab is active, then the **Insert STEP file...** command is in the Assemble panel.
 
 If the preview is not enabled, the **Insert STEP file...** command is in the **Insert** panel.
 
