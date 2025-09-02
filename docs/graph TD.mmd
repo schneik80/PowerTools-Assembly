@@ -1,0 +1,74 @@
+graph TD
+    A[PowerTools-Assembly.py] --> B[run<br/>function]
+    A --> C[stop<br/>function]
+    
+    B --> D[commands.start<br/>function]
+    C --> E[commands.stop<br/>function]
+    
+    D --> F[For each command:<br/>command.start<br/>]
+    E --> G[For each command:<br/>command.stop<br/>]
+    
+    F --> H[Assembly Stats<br/>assemblystats.start]
+    F --> I[Get & Update<br/>getandupdate.start]
+    F --> J[Bottom Up Update<br/>bottomupupdate.start]
+    F --> K[Insert STEP<br/>insertSTEP.start]
+    F --> L[Reference Manager<br/>refmanager.start]
+    F --> M[References<br/>refrences.start]
+    F --> N[Refresh<br/>refresh.start]
+    
+    H --> O[Create UI Button<br/>Add Command Handler]
+    I --> O
+    J --> O
+    K --> O
+    L --> O
+    M --> O
+    N --> O
+    
+    O --> P[User Clicks Button]
+    P --> Q[command_created<br/>Event Handler]
+    Q --> R[command_execute<br/>Event Handler]
+    R --> S[Business Logic<br/>Execute Command]
+    
+    subgraph "fusionAddInUtils"
+        T[add_handler<br/>Event Management]
+        U[log<br/>Logging]
+        V[handle_error<br/>Error Handling]
+        W[isSaved<br/>Document Check]
+        X[clipText<br/>Clipboard]
+    end
+    
+    Q --> T
+    R --> U
+    R --> V
+    R --> W
+    S --> X
+    
+    subgraph "Command Lifecycle"
+        Y[command_created]
+        Z[command_execute]
+        AA[command_destroy]
+    end
+    
+    Q --> Y
+    R --> Z
+    AA --> BB[Clean up handlers]
+    
+    subgraph "Assembly Stats Example Flow"
+        CC[Get Root Component]
+        DD[Count Components]
+        EE[Analyze Hierarchy]
+        FF[Get Assembly Stats]
+        GG[Display Results]
+    end
+    
+    S --> CC
+    CC --> DD
+    DD --> EE
+    EE --> FF
+    FF --> GG
+    
+    style A fill:#e1f5fe
+    style D fill:#f3e5f5
+    style F fill:#fff3e0
+    style O fill:#e8f5e8
+    style S fill:#fff9c4

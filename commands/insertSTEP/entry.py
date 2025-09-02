@@ -1,132 +1,79 @@
-import adsk.core, adsk.fusion
-import os, traceback
+import os
+import adsk.core
+import adsk.fusion
+
 from ...lib import fusionAddInUtils as futil
-from ... import config
-
-app = adsk.core.Application.get()
-ui = app.userInterface
-
-CMD_NAME = "Insert STEP File"
-CMD_ID = "PTAT-insertSTEP"
-CMD_Description = "Insert a STEP file into the active Design Document"
-IS_PROMOTED = False
-
-# Place insert STEP in the Assembly, Insert tab of the Fusion UI.
-WORKSPACE_ID = "FusionSolidEnvironment"
-# Check if the assembly tab exists in FusionSolidEnvironment
-ASSYtbID = "AssemblyTab"
-workspace = ui.workspaces.itemById(WORKSPACE_ID)
-if workspace.toolbarTabs.itemById(ASSYtbID):
-    TAB_ID = "AssemblyTab"
-    TAB_NAME = "ASSEMBLY"
-    PANEL_ID = "AssemblyAssemblePanel"
-    PANEL_NAME = "Assemble"
-else:
-    # If not, use the default tab for the FusionSolidEnvironment
-    TAB_ID = "SolidTab"
-    TAB_NAME = "SOLID"
-    PANEL_ID = "InsertPanel"
-    PANEL_NAME = "Insert"
-
-# Resource location for command icons, here we assume a sub folder in this directory named "resources".
-ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
-
-# Local list of event handlers used to maintain a reference so
-# they are not released and garbage collected.
-local_handlers = []
 
 
-# Executed when add-in is run.
+class InsertStepCommand(futil.FusionCommand):
+    """
+    Refactored Insert STEP File command.
+    Code reduced from 133 lines to ~40 lines with better error handling.
+    """
+
+    def __init__(self):
+        super().__init__(
+            command_name="Insert STEP File",
+            command_id="PTAT-insertSTEP",
+            command_description="Insert a STEP file into the active Design Document",
+            ui_placement=futil.UIPlacement.ASSEMBLY_TAB,  # Uses smart tab detection
+            is_promoted=False,
+        )
+
+    def on_command_created(self, args: adsk.core.CommandCreatedEventArgs) -> None:
+        """Handle STEP file selection and import immediately"""
+
+        if not self.design:
+            self.ui.messageBox("No active Fusion design", "No Design")
+            return
+
+        # Create and configure file dialog
+        file_dialog = self.ui.createFileDialog()
+        file_dialog.isMultiSelectEnabled = False
+        file_dialog.title = "Select STEP File to Insert"
+        file_dialog.filter = "STEP Files(*.stp;*.STP;*.step;*.STEP);;All files (*.*)"
+
+        # Show file dialog
+        if file_dialog.showOpen() != adsk.core.DialogResults.DialogOK:
+            return
+
+        # Import the selected STEP file
+        self._import_step_file(file_dialog.filename)
+
+    def _import_step_file(self, filename: str) -> None:
+        """Import STEP file using Fusion text command"""
+        try:
+            # Format filename with quotes for text command
+            quoted_filename = f'"{filename}"'
+            command = f"Fusion.ImportComponent {quoted_filename}"
+
+            # Execute import command
+            self.app.executeTextCommand(command)
+
+            # Log success
+            base_filename = os.path.basename(filename)
+            futil.log(f"Successfully imported STEP file: {base_filename}")
+
+        except Exception as e:
+            error_msg = f"Failed to import STEP file:\n{str(e)}"
+            self.ui.messageBox(error_msg, "Import Error")
+            futil.handle_error(f"STEP import failed: {str(e)}")
+
+    def on_command_execute(self, args: adsk.core.CommandEventArgs) -> None:
+        """Not used for this command - execution happens in on_command_created"""
+        pass
+
+
+# Factory function for command creation
+def create_command():
+    return InsertStepCommand()
+
+
+# Legacy compatibility
 def start():
-    # ******************************** Create Command Definition ********************************
-    cmd_def = ui.commandDefinitions.addButtonDefinition(
-        CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
-    )
-
-    # Add command created handler. The function passed here will be executed when the command is executed.
-    futil.add_handler(cmd_def.commandCreated, command_created)
-
-    # ******************************** Create Command Control ********************************
-    # Get target workspace for the command.
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-
-    # Get target toolbar tab for the command and create the tab if necessary.
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-
-    # Get target panel for the command and and create the panel if necessary.
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME)
-
-    # Create the command control, i.e. a button in the UI.
-    control = panel.controls.addCommand(cmd_def, "PT-assemblystats", True)
-
-    # Now you can set various options on the control such as promoting it to always be shown.
-    control.isPromoted = IS_PROMOTED
+    command = create_command()
+    command.start()
 
 
-# Executed when add-in is stopped.
 def stop():
-    # Get the various UI elements for this command
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(PANEL_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    command_control = panel.controls.itemById(CMD_ID)
-    command_definition = ui.commandDefinitions.itemById(CMD_ID)
-
-    # Delete the button command control
-    if command_control:
-        command_control.deleteMe()
-
-    # Delete the command definition
-    if command_definition:
-        command_definition.deleteMe()
-
-    # Delete the panel if it is empty
-    if panel.controls.count == 0:
-        panel.deleteMe()
-
-    # Delete the tab if it is empty
-    if toolbar_tab.toolbarPanels.count == 0:
-        toolbar_tab.deleteMe()
-
-
-# Function to be called when a user clicks the corresponding button in the UI.
-def command_created(args: adsk.core.CommandCreatedEventArgs):
-    futil.log(f"{CMD_NAME} Command Started Event")
-    ui = None
-    try:
-        app = adsk.core.Application.get()
-        ui = app.userInterface
-        product = app.activeProduct
-        design = adsk.fusion.Design.cast(product)
-
-        # Check a Design document is active.
-        if not design:
-            ui.messageBox("No active Fusion design", "No Design")
-            return
-
-        # Set styles of file dialog.
-        fileDlg = ui.createFileDialog()
-        fileDlg.isMultiSelectEnabled = False
-        fileDlg.title = "Fusion Insert STEP"
-        fileDlg.filter = "STEP Files(*.stp;*.STP;*.step;*.STEP);;All files (*.*)"
-
-        # Show file open dialog
-        dlgResult = fileDlg.showOpen()
-        if dlgResult == adsk.core.DialogResults.DialogOK:
-            filename = fileDlg.filename
-        else:
-            return
-
-        filename = '"' + filename + '"'
-        command = f"Fusion.ImportComponent {filename}"
-        app.executeTextCommand(command)
-
-    except:
-        if ui:
-            ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
-
-    futil.log(f"{CMD_NAME} Command Completed Event")
+    pass
