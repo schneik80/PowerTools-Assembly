@@ -4,11 +4,11 @@
 from ..lib import fusionAddInUtils as futil
 
 # Import refactored command classes
-from .assemblystats.entry_refactored import create_command as create_assembly_stats
-from .getandupdate.entry_refactored import create_command as create_get_and_update
-from .bottomupupdate.entry_refactored import create_command as create_bottom_up_update
-from .insertSTEP.entry_refactored import create_command as create_insert_step
-from .refrences.entry_refactored import create_command as create_document_references
+from .assemblystats.entry import create_command as create_assembly_stats
+from .getandupdate.entry import create_command as create_get_and_update
+from .bottomupupdate.entry import create_command as create_bottom_up_update
+from .insertSTEP.entry import create_command as create_insert_step
+from .refrences.entry import create_command as create_document_references
 
 # Import remaining commands (legacy until refactored)
 from .refmanager.entry import start as refmanager_start, stop as refmanager_stop

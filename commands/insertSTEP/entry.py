@@ -12,12 +12,16 @@ class InsertStepCommand(futil.FusionCommand):
     """
 
     def __init__(self):
+        # Get icon folder relative to this command file
+        icon_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+        
         super().__init__(
             command_name="Insert STEP File",
             command_id="PTAT-insertSTEP",
             command_description="Insert a STEP file into the active Design Document",
             ui_placement=futil.UIPlacement.ASSEMBLY_TAB,  # Uses smart tab detection
             is_promoted=False,
+            icon_folder=icon_folder,
         )
 
     def on_command_created(self, args: adsk.core.CommandCreatedEventArgs) -> None:

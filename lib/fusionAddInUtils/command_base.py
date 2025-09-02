@@ -11,6 +11,7 @@ import adsk.core
 import adsk.fusion
 
 from . import general_utils as futil
+from .event_utils import add_handler
 
 
 class UIPlacement(Enum):
@@ -51,12 +52,10 @@ class FusionCommand(ABC):
         self._app = adsk.core.Application.get()
         self._ui = self._app.userInterface
 
-        # Auto-detect icon folder if not provided
+        # Use provided icon folder or default to empty string
         if icon_folder is None:
-            caller_file = os.path.dirname(os.path.abspath(__file__))
-            self.icon_folder = os.path.join(
-                os.path.dirname(caller_file), "resources", ""
-            )
+            # Default to empty string - no icons will be used
+            self.icon_folder = ""
         else:
             self.icon_folder = icon_folder
 
@@ -104,11 +103,23 @@ class FusionCommand(ABC):
             cmd_def = self._create_command_definition()
 
             # Add command created handler
-            futil.add_handler(cmd_def.commandCreated, self._command_created_handler)
+            add_handler(cmd_def.commandCreated, self._command_created_handler)
 
             # Create UI control based on placement strategy
             control = self._create_ui_control(cmd_def)
-            control.isPromoted = self.is_promoted
+
+            # Only set isPromoted for controls that support it (not QAT or File Menu controls)
+            if self.ui_placement not in [
+                UIPlacement.QUICK_ACCESS_TOOLBAR,
+                UIPlacement.FILE_MENU,
+            ]:
+                try:
+                    control.isPromoted = self.is_promoted
+                except Exception as e:
+                    # Some controls don't support isPromoted - that's okay
+                    futil.log(
+                        f"Note: {self.command_name} control doesn't support isPromoted property: {str(e)}"
+                    )
 
             futil.log(f"{self.command_name} started successfully")
 
@@ -139,16 +150,23 @@ class FusionCommand(ABC):
 
     def _create_command_definition(self) -> adsk.core.CommandDefinition:
         """Create command definition with proper icon handling"""
-        return self.ui.commandDefinitions.addButtonDefinition(
-            self.command_id,
-            self.command_name,
-            self.command_description,
-            self.icon_folder,
-        )
+        # Only pass icon_folder if it's not empty
+        if self.icon_folder:
+            return self.ui.commandDefinitions.addButtonDefinition(
+                self.command_id,
+                self.command_name,
+                self.command_description,
+                self.icon_folder,
+            )
+        else:
+            # Create command without icon folder
+            return self.ui.commandDefinitions.addButtonDefinition(
+                self.command_id,
+                self.command_name,
+                self.command_description,
+            )
 
-    def _create_ui_control(
-        self, cmd_def: adsk.core.CommandDefinition
-    ) -> adsk.core.Control:
+    def _create_ui_control(self, cmd_def: adsk.core.CommandDefinition) -> Any:
         """Create UI control using strategy pattern"""
         placement_strategies = {
             UIPlacement.POWER_TOOLS_TAB: self._create_power_tools_control,
@@ -163,9 +181,7 @@ class FusionCommand(ABC):
 
         return strategy(cmd_def)
 
-    def _create_power_tools_control(
-        self, cmd_def: adsk.core.CommandDefinition
-    ) -> adsk.core.Control:
+    def _create_power_tools_control(self, cmd_def: adsk.core.CommandDefinition) -> Any:
         """Create control in Power Tools tab (performance optimized)"""
         # Use cached workspace lookup
         workspace_key = "FusionSolidEnvironment"
@@ -184,28 +200,27 @@ class FusionCommand(ABC):
         # Create control
         return panel.controls.addCommand(cmd_def)
 
-    def _create_qat_control(
-        self, cmd_def: adsk.core.CommandDefinition
-    ) -> adsk.core.Control:
+    def _create_qat_control(self, cmd_def: adsk.core.CommandDefinition) -> Any:
         """Create control in Quick Access Toolbar"""
         qat = self._get_cached_ui_element(
             "qat", "QAT", lambda: self.ui.toolbars.itemById("QAT")
         )
-        return qat.controls.addCommand(cmd_def, "save", True)
+        # Add command to QAT without specific position requirements
+        return qat.controls.addCommand(cmd_def)
 
-    def _create_file_menu_control(
-        self, cmd_def: adsk.core.CommandDefinition
-    ) -> adsk.core.Control:
+    def _create_file_menu_control(self, cmd_def: adsk.core.CommandDefinition) -> Any:
         """Create control in File menu"""
         qat = self._get_cached_ui_element(
             "qat", "QAT", lambda: self.ui.toolbars.itemById("QAT")
         )
         file_dropdown = qat.controls.itemById("FileSubMenuCommand")
-        return file_dropdown.controls.addCommand(cmd_def, "ExportCommand", False)
+        if file_dropdown:
+            return file_dropdown.controls.addCommand(cmd_def)
+        else:
+            # Fallback to QAT if file menu not available
+            return qat.controls.addCommand(cmd_def)
 
-    def _create_assembly_control(
-        self, cmd_def: adsk.core.CommandDefinition
-    ) -> adsk.core.Control:
+    def _create_assembly_control(self, cmd_def: adsk.core.CommandDefinition) -> Any:
         """Create control in Assembly tab or fallback to Solid tab"""
         workspace = self._get_cached_ui_element(
             "workspace",
@@ -224,7 +239,7 @@ class FusionCommand(ABC):
             tab = self._get_or_create_toolbar_tab(workspace, "SolidTab", "SOLID")
             panel = self._get_or_create_panel(tab, "InsertPanel", "Insert", "")
 
-        return panel.controls.addCommand(cmd_def, "PT-assemblystats", True)
+        return panel.controls.addCommand(cmd_def)
 
     def _get_cached_ui_element(
         self, cache_key: str, element_id: str, factory: Callable
@@ -261,12 +276,12 @@ class FusionCommand(ABC):
                 return
 
             # Connect events
-            futil.add_handler(
+            add_handler(
                 args.command.execute,
                 self._command_execute_handler,
                 local_handlers=self.local_handlers,
             )
-            futil.add_handler(
+            add_handler(
                 args.command.destroy,
                 self._command_destroy_handler,
                 local_handlers=self.local_handlers,

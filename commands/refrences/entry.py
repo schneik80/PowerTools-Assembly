@@ -1,3 +1,4 @@
+import os
 import adsk.core
 import adsk.fusion
 
@@ -11,12 +12,16 @@ class DocumentReferencesCommand(futil.FusionCommand):
     """
 
     def __init__(self):
+        # Get icon folder relative to this command file
+        icon_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+        
         super().__init__(
             command_name="Document References",
             command_id="PTAT-docrefs",
             command_description="List Active Document References",
             ui_placement=futil.UIPlacement.POWER_TOOLS_TAB,
             is_promoted=False,
+            icon_folder=icon_folder,
         )
 
     @futil.timed_operation

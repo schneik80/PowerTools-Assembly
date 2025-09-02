@@ -1,3 +1,4 @@
+import os
 import adsk.core
 import adsk.fusion
 
@@ -11,12 +12,16 @@ class BottomUpUpdateCommand(futil.FusionCommand):
     """
 
     def __init__(self):
+        # Get icon folder relative to this command file
+        icon_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+        
         super().__init__(
             command_name="Bottom-up Update",
             command_id="PTAT-bottomupupdate",
             command_description="Save and update all references in the open assembly from the bottom up",
             ui_placement=futil.UIPlacement.POWER_TOOLS_TAB,
             is_promoted=False,
+            icon_folder=icon_folder,
         )
 
         self.bulk_manager = futil.BulkOperationManager("Bottom-up Update")

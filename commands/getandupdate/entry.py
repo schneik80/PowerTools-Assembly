@@ -1,3 +1,4 @@
+import os
 import adsk.core
 
 from ...lib import fusionAddInUtils as futil
@@ -24,12 +25,16 @@ class GetAndUpdateCommand(futil.SimpleCommand):
                     "Failed to execute get and update operations", "Error"
                 )
 
+        # Get icon folder relative to this command file
+        icon_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+        
         super().__init__(
             command_name="Get and Update",
             command_id="PTAT-getandupdate",
             command_description="Get any new versions and then update all out-of-date assembly contexts.",
             execute_function=execute_get_and_update,
             ui_placement=futil.UIPlacement.QUICK_ACCESS_TOOLBAR,
+            icon_folder=icon_folder,
         )
 
 

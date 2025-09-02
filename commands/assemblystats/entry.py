@@ -1,3 +1,4 @@
+import os
 import adsk.core
 import adsk.fusion
 
@@ -11,12 +12,16 @@ class AssemblyStatsCommand(futil.FusionCommand):
     """
 
     def __init__(self):
+        # Get icon folder relative to this command file
+        icon_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+        
         super().__init__(
             command_name="Assembly Statistics",
             command_id="PTAT-assemblystats",
             command_description="Assembly statistics on component counts, assembly levels and Joints",
             ui_placement=futil.UIPlacement.POWER_TOOLS_TAB,
             is_promoted=False,
+            icon_folder=icon_folder,
         )
 
         # Cache for expensive operations
