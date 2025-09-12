@@ -184,15 +184,41 @@ def is_external_component(comp: adsk.fusion.Component):
     comp: A fusion component object.
     """
     app = adsk.core.Application.get()
-    ui = app.userInterface
-    design = app.activeProduct
+    product = app.activeProduct
+    design = adsk.fusion.Design.cast(product)
+    if not design:
+        return False
 
     root = design.rootComponent
     occs = root.occurrencesByComponent(comp)
-    occ: adsk.fusion.Occurrence = None
-    fuu = any([occ.isReferencedComponent for occ in occs])
-    print(fuu)
-    return any([occ.isReferencedComponent for occ in occs])
+    return any(occ.isReferencedComponent for occ in occs)
+
+
+def assembly_dict_to_ascii(assembly_dict):
+    """
+    Generate an ASCII diagram as a string from the assembly_dict structure.
+    :param assembly_dict: The dictionary representing the assembly structure.
+    :return: A string containing the ASCII diagram.
+    """
+
+    def build_ascii(node, prefix="", is_last=True):
+        lines = []
+        comp_name = node["component"].name
+        connector = "└── " if is_last else "├── "
+        lines.append(prefix + connector + comp_name)
+        children = list(node["children"].values())
+        for idx, child in enumerate(children):
+            is_child_last = idx == len(children) - 1
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            lines.extend(build_ascii(child, child_prefix, is_child_last))
+        return lines
+
+    ascii_lines = []
+    items = list(assembly_dict.values())
+    for idx, node in enumerate(items):
+        is_last = idx == len(items) - 1
+        ascii_lines.extend(build_ascii(node, "", is_last))
+    return "\n".join(ascii_lines)
 
 
 def command_execute(args: adsk.core.CommandCreatedEventArgs):
@@ -217,12 +243,17 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
         # Sort the dictionary as a DAG in bottom-up order
         bottom_up_order = sort_dag_bottom_up(assembly_dict)
+        # dagString = assembly_dict_to_ascii(assembly_dict)
+        # futil.log("Assembly Structure:\n" + dagString)
+
         # Print the bottom-up order to the console
         docCount = len(bottom_up_order)
+        futil.log(f"Bottom-up order: {bottom_up_order}")
+
         if docCount == 0:
             ui.messageBox("No components found in the assembly.")
             return
-        print(f"----- Starting saving {docCount} components -----")
+        futil.log(f"----- Starting saving {docCount} components -----")
 
         for component_name in bottom_up_order:
             # Get the component by name from the design
@@ -246,7 +277,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
                     # Get the component document
                     document = app.data.findFileById(docid)
-                    app.documents.open(document, False)
+                    app.documents.open(document, True)
 
                     # Check if the component is already saved in the current version
                     # docVersionBuild = app.activeDocument.version
