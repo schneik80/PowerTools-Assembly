@@ -158,7 +158,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
                 file_data = make_file_data(file)
                 try:
-                    if file.parentProject.name == "Fasteners":
+                    if file.parentProject.name == "Standard Components":
                         docFasteners.append(file_data)
                     else:
                         # Check if this is a configuration
