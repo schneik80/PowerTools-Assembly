@@ -1,5 +1,6 @@
 import adsk.core, adsk.fusion
 import os, re, traceback
+import time
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -28,6 +29,13 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource
 # Holds references to event handlers
 local_handlers = []
 saved = []
+
+# Command input IDs
+REBUILD_INPUT_ID = "rebuild_all"
+LOG_ENABLE_ID = "enable_log"
+LOG_PATH_ID = "log_path"
+LOG_BROWSE_ID = "browse_log"
+SKIP_STANDARD_ID = "skip_standard"
 
 
 # Executed when add-in is run.
@@ -96,6 +104,9 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         args.command.execute, command_execute, local_handlers=local_handlers
     )
     futil.add_handler(
+        args.command.inputChanged, on_input_changed, local_handlers=local_handlers
+    )
+    futil.add_handler(
         args.command.destroy, command_destroy, local_handlers=local_handlers
     )
 
@@ -119,6 +130,25 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Check that the active document has been saved.
     if futil.isSaved() == False:
         return
+
+    # Build command dialog inputs
+    inputs: adsk.core.CommandInputs = args.command.commandInputs
+    # Checkbox: Rebuild all (default on)
+    inputs.addBoolValueInput(REBUILD_INPUT_ID, "Rebuild all", True, "", True)
+    # Checkbox: create log file (default ON)
+    log_enable = inputs.addBoolValueInput(LOG_ENABLE_ID, "Log Progress", True, "", True)
+    # Checkbox: skip standard components (default ON)
+    inputs.addBoolValueInput(
+        SKIP_STANDARD_ID, "Skip standard components", True, "", True
+    )
+    # Read-only string to display chosen log path
+    log_path = inputs.addStringValueInput(LOG_PATH_ID, "Log file path", "")
+    log_path.isReadOnly = True
+    # Browse button to choose save path
+    browse_btn = inputs.addBoolValueInput(LOG_BROWSE_ID, "Browse…", False, "", False)
+    # Enable/disable according to checkbox default
+    log_path.isEnabled = log_enable.value
+    browse_btn.isEnabled = log_enable.value
 
 
 def traverse_assembly(component, parent_dict):
@@ -158,24 +188,6 @@ def sort_dag_bottom_up(assembly_dict):
         traverse_dag(value)
 
     return sorted_components
-
-
-def UpdateAll(ui):
-    """
-    Update all references in the assembly to newly saved versions.
-    ui: The user interface object.
-    """
-    # this handles the update and get latest
-    try:
-        cmdDefs = ui.commandDefinitions
-        cmdGet = cmdDefs.itemById("GetAllLatestCmd")
-        cmdGet.execute()
-        cmdUpdate = cmdDefs.itemById("ContextUpdateAllFromParentCmd")
-        cmdUpdate.execute()
-
-    except:
-        if ui:
-            ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
 
 
 def is_external_component(comp: adsk.fusion.Component):
@@ -221,101 +233,176 @@ def assembly_dict_to_ascii(assembly_dict):
     return "\n".join(ascii_lines)
 
 
-def command_execute(args: adsk.core.CommandCreatedEventArgs):
-    futil.log(f"{CMD_NAME} Command Execute Event")
-    ui = None
+def command_execute(args: adsk.core.CommandEventArgs):
+    # ...existing code...
+    from datetime import datetime
 
+    def write_log_entry(entry):
+        if create_log and file_path:
+            try:
+                with open(file_path, "a", encoding="utf-8") as fh:
+                    fh.write(entry + "\n")
+            except Exception as log_e:
+                futil.log(f"Failed to write log entry: {log_e}")
+
+    app = adsk.core.Application.get()
+    ui = app.userInterface
+    start_total_time = time.time()
     try:
-        app = adsk.core.Application.get()
-        ui = app.userInterface
         design = app.activeProduct
         appVersionBuild = app.version
-
         if not isinstance(design, adsk.fusion.Design):
             ui.messageBox("No active Fusion 360 design")
             return
-
+        # Read dialog values
+        inputs: adsk.core.CommandInputs = args.command.commandInputs
+        skip_standard = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(SKIP_STANDARD_ID)
+        ).value
+        rebuild_all = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(REBUILD_INPUT_ID)
+        ).value
+        create_log = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(LOG_ENABLE_ID)
+        ).value
+        log_path_val = adsk.core.StringValueCommandInput.cast(
+            inputs.itemById(LOG_PATH_ID)
+        ).value
         root_component = design.rootComponent
         assembly_dict = {}
-
-        # Start traversing from the root component
         traverse_assembly(root_component, assembly_dict)
-
-        # Sort the dictionary as a DAG in bottom-up order
         bottom_up_order = sort_dag_bottom_up(assembly_dict)
-        # dagString = assembly_dict_to_ascii(assembly_dict)
-        # futil.log("Assembly Structure:\n" + dagString)
-
-        # Print the bottom-up order to the console
+        dagString = assembly_dict_to_ascii(assembly_dict)
+        futil.log("Assembly Structure:\n" + dagString)
         docCount = len(bottom_up_order)
         futil.log(f"Bottom-up order: {bottom_up_order}")
-
         if docCount == 0:
             ui.messageBox("No components found in the assembly.")
             return
         futil.log(f"----- Starting saving {docCount} components -----")
-
+        saved_doc_count = 0
+        file_path = None
+        if create_log:
+            doc = app.activeDocument
+            base_name = "assembly_log"
+            if log_path_val:
+                file_path = log_path_val
+            else:
+                if doc and doc.dataFile:
+                    base_name = doc.dataFile.name
+                elif doc and doc.name:
+                    base_name = doc.name
+                base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
+                if not base_name.lower().endswith(".log"):
+                    base_name += ".log"
+                file_path = os.path.join(os.path.expanduser("~/Documents"), base_name)
+            # Write initial log info at start
+            try:
+                with open(file_path, "w", encoding="utf-8") as fh:
+                    parent_project_name = None
+                    doc_id = None
+                    try:
+                        parent_project_name = (
+                            doc.dataFile.parentProject.name
+                            if doc and doc.dataFile and doc.dataFile.parentProject
+                            else None
+                        )
+                        doc_id = doc.dataFile.id if doc and doc.dataFile else None
+                    except Exception:
+                        parent_project_name = None
+                        doc_id = None
+                    fh.write(f"Active Document Parent Project: {parent_project_name}\n")
+                    fh.write(f"Active Document ID: {doc_id}\n")
+                    fh.write("Command Options:\n")
+                    fh.write(f"  Rebuild all: {rebuild_all}\n")
+                    fh.write(f"  Create log file: {create_log}\n")
+                    fh.write(f"  Skip standard components: {skip_standard}\n")
+                    fh.write(f"  Log file path: {file_path}\n")
+                    fh.write("\nAssembly Diagram:\n")
+                    fh.write(dagString)
+                    fh.write("\n\nBottom-up order:\n")
+                    fh.write("\n".join(bottom_up_order))
+                    fh.write("\n\nDocument save log:\n")
+            except Exception as log_e:
+                futil.log(f"Failed to write initial log: {log_e}")
         for component_name in bottom_up_order:
-            # Get the component by name from the design
-
             if component_name == "RootComponent":
-                # Get the component by name from the design
                 continue
-
             component = design.allComponents.itemByName(component_name)
-            # if not is_external_component(component):
-            #     # Skip if the component is not external
-            #     print(f"Component {component_name} is not external. Skipping.")
-            #     continue
+            if not component:
+                continue
+            design_data_file = getattr(
+                component.parentDesign.parentDocument, "designDataFile", None
+            )
+            if design_data_file is None:
+                log_entry = f"Skipped component (no designDataFile): {component_name}"
+                write_log_entry(log_entry)
+                continue
+            docid = design_data_file.id
+            parent_project = None
+            try:
+                parent_project = (
+                    component.parentDesign.parentDocument.dataFile.parentProject.name
+                )
+            except Exception:
+                parent_project = None
+            if skip_standard and parent_project == "Standard Components":
+                log_entry = f"Skipped standard component: {component_name}"
+                write_log_entry(log_entry)
+                continue
+            if docid in saved:
+                continue
+            saved.append(docid)
+            document = app.data.findFileById(docid)
+            app.documents.open(document, True)
+            # Update all references in the newly opened document
+            opened_doc = app.activeDocument
+            opened_doc.updateAllReferences()
 
-            if component:
-                # Open the component document
-                docid = component.parentDesign.parentDocument.designDataFile.id  # type: ignore
-                if docid not in saved:
-
-                    saved.append(docid)  # to avoid duplicate saves
-
-                    # Get the component document
-                    document = app.data.findFileById(docid)
-                    app.documents.open(document, True)
-
-                    # Check if the component is already saved in the current version
-                    # docVersionBuild = app.activeDocument.version
-                    # if docVersionBuild == appVersionBuild:
-                    #     print(f"Component {component_name} already saved in version {appVersionBuild}")
-                    #     # Close the component document
-                    #     app.activeDocument.close(True)
-                    #     continue
-
-                    # Make sure design workspace is active
-                    workspace = ui.workspaces.itemById("FusionSolidEnvironment")
-                    if workspace and not workspace.isActive:
-                        workspace.activate()
-                    des = adsk.fusion.Design.cast(app.activeProduct)
-                    des.attributes.add("FusionRA", "FusionRA", component_name)
-                    attr = des.attributes.itemByName("FusionRA", "FusionRA")
-                    attr.deleteMe()
-
-                    # Save the component document
-                    app.activeDocument.save(
-                        f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
-                    )
-                    # Close the component document
-                    app.activeDocument.close(True)
-                    print(f"Component {component_name} saved and closed successfully.")
-
-                else:
-                    continue
-
-        # Update all references in the assembly to newly saved versions
-        UpdateAll(ui)
+            workspace = ui.workspaces.itemById("FusionSolidEnvironment")
+            if workspace and not workspace.isActive:
+                workspace.activate()
+            des = adsk.fusion.Design.cast(app.activeProduct)
+            if rebuild_all:
+                des.computeAll()
+            des.attributes.add("FusionRA", "FusionRA", component_name)
+            attr = des.attributes.itemByName("FusionRA", "FusionRA")
+            attr.deleteMe()
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            app.activeDocument.save(
+                f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
+            )
+            app.activeDocument.close(True)
+            log_entry = f"{component_name} saved - [{timestamp}]"
+            write_log_entry(log_entry)
+            saved_doc_count += 1
+            des = None
         print(f"----- Components saved -----")
-
+        cmdDefs = ui.commandDefinitions
+        cmdGet = cmdDefs.itemById("GetAllLatestCmd")
+        cmdGet.execute()
+        cmdUpdate = cmdDefs.itemById("ContextUpdateAllFromParentCmd")
+        cmdUpdate.execute()
         adsk.doEvents()
+        # Save the active document after updating references
+        app.activeDocument.save(
+            f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
+        )
 
-        # Show a message box indicating that all external assembly references have been saved
-        ui.messageBox("All external Assembly References Saved.")
-
+        completion_msg = "Bottom-up Update complete."
+        end_total_time = time.time()
+        total_elapsed = end_total_time - start_total_time
+        if create_log and file_path:
+            try:
+                with open(file_path, "a", encoding="utf-8") as fh:
+                    fh.write(f"\nTotal documents saved: {saved_doc_count}\n")
+                    fh.write(f"Total command run time: {total_elapsed:.2f} seconds\n")
+                futil.log(f"Log written to: {file_path}")
+                completion_msg += f"\nLog written to: {file_path}"
+            except Exception as log_e:
+                futil.log(f"Failed to write log: {log_e}")
+                completion_msg += f"\nFailed to write log to: {file_path}\n{log_e}"
+        ui.messageBox(completion_msg)
     except Exception as e:
         if ui:
             ui.messageBox(f"Failed:\n{traceback.format_exc()}")
@@ -326,3 +413,58 @@ def command_destroy(args: adsk.core.CommandEventArgs):
     global local_handlers
     local_handlers = []
     futil.log(f"{CMD_NAME} Command Destroy Event")
+
+
+def _propose_default_log_filename() -> str:
+    app = adsk.core.Application.get()
+    doc = app.activeDocument
+    base_name = "assembly_log"
+    if doc and doc.dataFile:
+        base_name = doc.dataFile.name
+    elif doc and doc.name:
+        base_name = doc.name
+    base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
+    if not base_name.lower().endswith(".txt"):
+        base_name += ".txt"
+    return base_name
+
+
+def on_input_changed(args: adsk.core.InputChangedEventArgs):
+    try:
+        changed = args.input
+        inputs = args.inputs
+        ui = adsk.core.Application.get().userInterface
+
+        if changed.id == LOG_ENABLE_ID:
+            enabled = adsk.core.BoolValueCommandInput.cast(changed).value
+            path_input = adsk.core.StringValueCommandInput.cast(
+                inputs.itemById(LOG_PATH_ID)
+            )
+            browse_btn = adsk.core.BoolValueCommandInput.cast(
+                inputs.itemById(LOG_BROWSE_ID)
+            )
+            path_input.isEnabled = enabled
+            browse_btn.isEnabled = enabled
+
+        if changed.id == LOG_BROWSE_ID:
+            # Treat as a momentary button
+            btn = adsk.core.BoolValueCommandInput.cast(changed)
+            # Reset state so it can be clicked again later
+            btn.value = False
+
+            dlg: adsk.core.FileDialog = ui.createFileDialog()
+            dlg.title = "Save log file"
+            dlg.filter = "Text files (*.txt);;All Files (*.*)"
+            dlg.isMultiSelectEnabled = False
+            dlg.initialDirectory = os.path.expanduser("~/Documents")
+            dlg.initialFilename = _propose_default_log_filename()
+            if dlg.showSave() == adsk.core.DialogResults.DialogOK:
+                sel_path = dlg.filename
+                path_input = adsk.core.StringValueCommandInput.cast(
+                    inputs.itemById(LOG_PATH_ID)
+                )
+                path_input.value = sel_path
+    except Exception:
+        ui = adsk.core.Application.get().userInterface
+        if ui:
+            ui.messageBox("Input handling failed:\n{}".format(traceback.format_exc()))
