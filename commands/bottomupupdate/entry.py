@@ -358,8 +358,11 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 workspace.activate()
             des = adsk.fusion.Design.cast(app.activeProduct)
             if rebuild_all:
-                des.computeAll()
-                adsk.doEvents()
+                futil.log(f"Rebuilding component: {component_name}")
+                while not des.computeAll():
+                    adsk.doEvents()
+                    time.sleep(0.1)  # Optional: Add a small delay to observe the update
+                futil.log(f"Rebuild complete: {component_name}")
             des.attributes.add("FusionRA", "FusionRA", component_name)
             attr = des.attributes.itemByName("FusionRA", "FusionRA")
             attr.deleteMe()
@@ -375,10 +378,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
         print(f"----- Components saved -----")
         cmdDefs = ui.commandDefinitions
         cmdGet = cmdDefs.itemById("GetAllLatestCmd")
-        cmdGet.execute()
+        while not cmdGet.execute():
+            adsk.doEvents()
+            time.sleep(0.1)  # Optional: Add a small delay to observe the update
         cmdUpdate = cmdDefs.itemById("ContextUpdateAllFromParentCmd")
-        cmdUpdate.execute()
-        adsk.doEvents()
+        while not cmdUpdate.execute():
+            adsk.doEvents()
+            time.sleep(0.1)  # Optional: Add a small delay to observe the update
+
         # Save the active document after updating references
         app.activeDocument.save(
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
