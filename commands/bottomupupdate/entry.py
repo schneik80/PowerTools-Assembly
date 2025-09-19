@@ -28,7 +28,7 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource
 
 # Holds references to event handlers
 local_handlers = []
-saved = []
+saved = set()
 
 # Command input IDs
 REBUILD_INPUT_ID = "rebuild_all"
@@ -40,32 +40,26 @@ SKIP_STANDARD_ID = "skip_standard"
 
 # Executed when add-in is run.
 def start():
-    # ******************************** Create Command Definition ********************************
-    cmd_def = ui.commandDefinitions.addButtonDefinition(
-        CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
-    )
-
-    # Add command created handler. The function passed here will be executed when the command is executed.
-    futil.add_handler(cmd_def.commandCreated, command_created)
-
-    # ******************************** Create Command Control ********************************
-    # Get target workspace for the command.
+    # Remove any existing command/control for clean setup
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
-
-    # Get target toolbar tab for the command and create the tab if necessary.
     toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
     if toolbar_tab is None:
         toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-
-    # Get target panel for the command and and create the panel if necessary.
     panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
     if panel is None:
         panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
-
-    # Create the command control, i.e. a button in the UI.
+    command_control = panel.controls.itemById(CMD_ID)
+    if command_control:
+        command_control.deleteMe()
+    command_definition = ui.commandDefinitions.itemById(CMD_ID)
+    if command_definition:
+        command_definition.deleteMe()
+    # Create new command definition and control
+    cmd_def = ui.commandDefinitions.addButtonDefinition(
+        CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
+    )
+    futil.add_handler(cmd_def.commandCreated, command_created)
     control = panel.controls.addCommand(cmd_def)
-
-    # Now you can set various options on the control such as promoting it to always be shown.
     control.isPromoted = IS_PROMOTED
 
 
@@ -352,7 +346,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 continue
             if docid in saved:
                 continue
-            saved.append(docid)
+            saved.add(docid)
             document = app.data.findFileById(docid)
             app.documents.open(document, True)
             # Update all references in the newly opened document
@@ -365,6 +359,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             des = adsk.fusion.Design.cast(app.activeProduct)
             if rebuild_all:
                 des.computeAll()
+                adsk.doEvents()
             des.attributes.add("FusionRA", "FusionRA", component_name)
             attr = des.attributes.itemByName("FusionRA", "FusionRA")
             attr.deleteMe()
