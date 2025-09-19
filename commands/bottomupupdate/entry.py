@@ -26,16 +26,23 @@ PANEL_AFTER = config.my_panel_after
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
 
-# Holds references to event handlers
+# Holds references to event handlers to prevent garbage collection
 local_handlers = []
+# Set to track document IDs that have already been saved to avoid duplicate processing
 saved = set()
 
 # Command input IDs
-REBUILD_INPUT_ID = "rebuild_all"
-LOG_ENABLE_ID = "enable_log"
-LOG_PATH_ID = "log_path"
-LOG_BROWSE_ID = "browse_log"
-SKIP_STANDARD_ID = "skip_standard"
+REBUILD_INPUT_ID = "rebuild_all"  # Checkbox to enable full rebuild of all components
+SKIP_STANDARD_ID = "skip_standard"  # Checkbox to skip standard library components
+SKIP_SAVED_ID = "skip_saved"  # Checkbox to skip components that are already saved
+HIDE_ORIGINS_ID = "hide_origins"  # Checkbox to hide coordinate system origins
+HIDE_JOINTS_ID = "hide_joints"  # Checkbox to hide joint elements in the model
+HIDE_CONSTRAINTS_ID = "hide_constraints"  # Checkbox to hide assembly constraints
+HIDE_JOINTORIGINS_ID = "hide_jointorigins"  # Checkbox to hide joint origin markers
+APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent before saving
+LOG_ENABLE_ID = "enable_log"  # Checkbox to enable progress logging
+LOG_PATH_ID = "log_path"  # Text input for custom log file path
+LOG_BROWSE_ID = "browse_log"  # Button to browse for log file location
 
 
 # Executed when add-in is run.
@@ -106,9 +113,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     global product, design, title
 
+    # Get the active Fusion product and cast to Design for manipulation
     product = app.activeProduct
     design = adsk.fusion.Design.cast(product)
     doc = app.activeDocument
+    # Title for dialogs and messages
     title = CMD_NAME
 
     # Check a Design document is active.
@@ -127,20 +136,43 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     # Build command dialog inputs
     inputs: adsk.core.CommandInputs = args.command.commandInputs
-    # Checkbox: Rebuild all (default on)
-    inputs.addBoolValueInput(REBUILD_INPUT_ID, "Rebuild all", True, "", True)
-    # Checkbox: create log file (default ON)
-    log_enable = inputs.addBoolValueInput(LOG_ENABLE_ID, "Log Progress", True, "", True)
-    # Checkbox: skip standard components (default ON)
-    inputs.addBoolValueInput(
+    # Main tab
+    main_tab = inputs.addTabCommandInput("mainTab", "Main")
+    main_inputs = main_tab.children
+    main_inputs.addBoolValueInput(REBUILD_INPUT_ID, "Rebuild all", True, "", True)
+    main_inputs.addBoolValueInput(
         SKIP_STANDARD_ID, "Skip standard components", True, "", True
     )
-    # Read-only string to display chosen log path
-    log_path = inputs.addStringValueInput(LOG_PATH_ID, "Log file path", "")
+    main_inputs.addBoolValueInput(
+        SKIP_SAVED_ID, "Skip already saved components", True, "", True
+    )
+    main_inputs.addBoolValueInput(
+        APPLY_INTENT_ID, "Apply design intent before save", True, "", False
+    )
+
+    # Visualization tab
+    vis_tab = inputs.addTabCommandInput("visTab", "Visibility")
+    vis_inputs = vis_tab.children
+    vis_inputs.addBoolValueInput(HIDE_ORIGINS_ID, "Hide origins", True, "", False)
+    vis_inputs.addBoolValueInput(HIDE_JOINTS_ID, "Hide joints", True, "", False)
+    vis_inputs.addBoolValueInput(
+        HIDE_CONSTRAINTS_ID, "Hide constraints", True, "", False
+    )
+    vis_inputs.addBoolValueInput(
+        HIDE_JOINTORIGINS_ID, "Hide joint origins", True, "", False
+    )
+
+    # Logging tab
+    log_tab = inputs.addTabCommandInput("logTab", "Logging")
+    log_inputs = log_tab.children
+    log_enable = log_inputs.addBoolValueInput(
+        LOG_ENABLE_ID, "Log Progress", True, "", True
+    )
+    log_path = log_inputs.addStringValueInput(LOG_PATH_ID, "Log file path", "")
     log_path.isReadOnly = True
-    # Browse button to choose save path
-    browse_btn = inputs.addBoolValueInput(LOG_BROWSE_ID, "Browse…", False, "", False)
-    # Enable/disable according to checkbox default
+    browse_btn = log_inputs.addBoolValueInput(
+        LOG_BROWSE_ID, "Browse…", False, "", False
+    )
     log_path.isEnabled = log_enable.value
     browse_btn.isEnabled = log_enable.value
 
@@ -232,6 +264,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     from datetime import datetime
 
     def write_log_entry(entry):
+        """Helper function to write entries to the log file if logging is enabled"""
         if create_log and file_path:
             try:
                 with open(file_path, "a", encoding="utf-8") as fh:
@@ -241,14 +274,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     app = adsk.core.Application.get()
     ui = app.userInterface
-    start_total_time = time.time()
+    start_total_time = time.time()  # Track total execution time
     try:
         design = app.activeProduct
-        appVersionBuild = app.version
+        appVersionBuild = app.version  # Store Fusion version for save comments
         if not isinstance(design, adsk.fusion.Design):
             ui.messageBox("No active Fusion 360 design")
             return
-        # Read dialog values
+
+        # Read dialog values from user inputs
         inputs: adsk.core.CommandInputs = args.command.commandInputs
         skip_standard = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(SKIP_STANDARD_ID)
@@ -262,11 +296,18 @@ def command_execute(args: adsk.core.CommandEventArgs):
         log_path_val = adsk.core.StringValueCommandInput.cast(
             inputs.itemById(LOG_PATH_ID)
         ).value
+        skip_saved = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(SKIP_SAVED_ID)
+        ).value
+
+        # Build the assembly structure and determine processing order
         root_component = design.rootComponent
         assembly_dict = {}
-        traverse_assembly(root_component, assembly_dict)
-        bottom_up_order = sort_dag_bottom_up(assembly_dict)
-        dagString = assembly_dict_to_ascii(assembly_dict)
+        traverse_assembly(root_component, assembly_dict)  # Build component hierarchy
+        bottom_up_order = sort_dag_bottom_up(assembly_dict)  # Sort for dependency order
+        dagString = assembly_dict_to_ascii(
+            assembly_dict
+        )  # Create visual representation
         futil.log("Assembly Structure:\n" + dagString)
         docCount = len(bottom_up_order)
         futil.log(f"Bottom-up order: {bottom_up_order}")
@@ -274,21 +315,26 @@ def command_execute(args: adsk.core.CommandEventArgs):
             ui.messageBox("No components found in the assembly.")
             return
         futil.log(f"----- Starting saving {docCount} components -----")
-        saved_doc_count = 0
+        saved_doc_count = 0  # Track how many documents were actually saved
         file_path = None
+
+        # Set up logging if enabled
         if create_log:
             doc = app.activeDocument
             base_name = "assembly_log"
-            if log_path_val:
+            if log_path_val:  # Use custom path if provided
                 file_path = log_path_val
             else:
+                # Generate default log filename based on document name
                 if doc and doc.dataFile:
                     base_name = doc.dataFile.name
                 elif doc and doc.name:
                     base_name = doc.name
+                # Clean filename for filesystem compatibility
                 base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
                 if not base_name.lower().endswith(".log"):
                     base_name += ".log"
+                # Default location is user Documents folder
                 file_path = os.path.join(os.path.expanduser("~/Documents"), base_name)
             # Write initial log info at start
             try:
@@ -296,6 +342,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     parent_project_name = None
                     doc_id = None
                     try:
+                        # Get project and document information for logging
                         parent_project_name = (
                             doc.dataFile.parentProject.name
                             if doc and doc.dataFile and doc.dataFile.parentProject
@@ -319,12 +366,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     fh.write("\n\nDocument save log:\n")
             except Exception as log_e:
                 futil.log(f"Failed to write initial log: {log_e}")
+        # Process each component in bottom-up dependency order
         for component_name in bottom_up_order:
-            if component_name == "RootComponent":
+            if component_name == "RootComponent":  # Skip the root assembly itself
                 continue
             component = design.allComponents.itemByName(component_name)
-            if not component:
+            if not component:  # Component not found, skip it
                 continue
+            # Get the design data file for this component
             design_data_file = getattr(
                 component.parentDesign.parentDocument, "designDataFile", None
             )
@@ -335,53 +384,77 @@ def command_execute(args: adsk.core.CommandEventArgs):
             docid = design_data_file.id
             parent_project = None
             try:
+                # Get the project name to check if it's a standard component
                 parent_project = (
                     component.parentDesign.parentDocument.dataFile.parentProject.name
                 )
             except Exception:
                 parent_project = None
+
+            # Skip standard components if option is enabled
             if skip_standard and parent_project == "Standard Components":
                 log_entry = f"Skipped standard component: {component_name}"
                 write_log_entry(log_entry)
+
+            # Skip already saved components if option is enabled
+            if skip_saved and app.activeDocument.version == app.version:
+                log_entry = f"Skipped already saved component: {component_name}"
+                write_log_entry(log_entry)
                 continue
+
+            # Skip if we've already processed this document ID
             if docid in saved:
                 continue
-            saved.add(docid)
+            saved.add(docid)  # Mark this document as processed
+
+            # Open the component's document for editing
             document = app.data.findFileById(docid)
             app.documents.open(document, True)
             # Update all references in the newly opened document
             opened_doc = app.activeDocument
             opened_doc.updateAllReferences()
 
+            # Ensure we're in the correct workspace for operations
             workspace = ui.workspaces.itemById("FusionSolidEnvironment")
             if workspace and not workspace.isActive:
                 workspace.activate()
             des = adsk.fusion.Design.cast(app.activeProduct)
+
+            # Rebuild the component if rebuild option is enabled
             if rebuild_all:
                 futil.log(f"Rebuilding component: {component_name}")
-                while not des.computeAll():
+                while not des.computeAll():  # Force compute until complete
                     adsk.doEvents()
                     time.sleep(0.1)  # Optional: Add a small delay to observe the update
                 futil.log(f"Rebuild complete: {component_name}")
+
+            # Add and remove a temporary attribute to trigger change detection
             des.attributes.add("FusionRA", "FusionRA", component_name)
             attr = des.attributes.itemByName("FusionRA", "FusionRA")
             attr.deleteMe()
+
+            # Save the document with timestamp
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             app.activeDocument.save(
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
-            app.activeDocument.close(True)
+            app.activeDocument.close(True)  # Close after saving
             log_entry = f"{component_name} saved - [{timestamp}]"
             write_log_entry(log_entry)
-            saved_doc_count += 1
-            des = None
+            saved_doc_count += 1  # Increment counter for completed saves
+            des = None  # Clear design reference
+
         print(f"----- Components saved -----")
+
+        # Execute Fusion commands to get latest versions and update references
         cmdDefs = ui.commandDefinitions
-        cmdGet = cmdDefs.itemById("GetAllLatestCmd")
+        cmdGet = cmdDefs.itemById("GetAllLatestCmd")  # Get all latest command
         while not cmdGet.execute():
             adsk.doEvents()
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
-        cmdUpdate = cmdDefs.itemById("ContextUpdateAllFromParentCmd")
+        cmdUpdate = cmdDefs.itemById(
+            "ContextUpdateAllFromParentCmd"
+        )  # Update all from parent
         while not cmdUpdate.execute():
             adsk.doEvents()
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
@@ -391,11 +464,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
         )
 
+        # Prepare completion message and finalize logging
         completion_msg = "Bottom-up Update complete."
         end_total_time = time.time()
-        total_elapsed = end_total_time - start_total_time
+        total_elapsed = (
+            end_total_time - start_total_time
+        )  # Calculate total execution time
         if create_log and file_path:
             try:
+                # Write final statistics to log file
                 with open(file_path, "a", encoding="utf-8") as fh:
                     fh.write(f"\nTotal documents saved: {saved_doc_count}\n")
                     fh.write(f"Total command run time: {total_elapsed:.2f} seconds\n")
@@ -404,7 +481,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             except Exception as log_e:
                 futil.log(f"Failed to write log: {log_e}")
                 completion_msg += f"\nFailed to write log to: {file_path}\n{log_e}"
-        ui.messageBox(completion_msg)
+        ui.messageBox(completion_msg)  # Show completion message to user
     except Exception as e:
         if ui:
             ui.messageBox(f"Failed:\n{traceback.format_exc()}")
@@ -418,6 +495,7 @@ def command_destroy(args: adsk.core.CommandEventArgs):
 
 
 def _propose_default_log_filename() -> str:
+    """Generate a default log filename based on the active document name"""
     app = adsk.core.Application.get()
     doc = app.activeDocument
     base_name = "assembly_log"
@@ -425,6 +503,7 @@ def _propose_default_log_filename() -> str:
         base_name = doc.dataFile.name
     elif doc and doc.name:
         base_name = doc.name
+    # Clean filename for filesystem compatibility
     base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
     if not base_name.lower().endswith(".txt"):
         base_name += ".txt"
@@ -432,11 +511,13 @@ def _propose_default_log_filename() -> str:
 
 
 def on_input_changed(args: adsk.core.InputChangedEventArgs):
+    """Handle changes to UI input controls in the command dialog"""
     try:
         changed = args.input
         inputs = args.inputs
         ui = adsk.core.Application.get().userInterface
 
+        # Handle logging enable/disable toggle
         if changed.id == LOG_ENABLE_ID:
             enabled = adsk.core.BoolValueCommandInput.cast(changed).value
             path_input = adsk.core.StringValueCommandInput.cast(
@@ -445,21 +526,28 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
             browse_btn = adsk.core.BoolValueCommandInput.cast(
                 inputs.itemById(LOG_BROWSE_ID)
             )
+            # Enable/disable log path controls based on logging checkbox
             path_input.isEnabled = enabled
             browse_btn.isEnabled = enabled
 
+        # Handle browse button click for log file selection
         if changed.id == LOG_BROWSE_ID:
             # Treat as a momentary button
             btn = adsk.core.BoolValueCommandInput.cast(changed)
             # Reset state so it can be clicked again later
             btn.value = False
 
+            # Create and configure file dialog for log file selection
             dlg: adsk.core.FileDialog = ui.createFileDialog()
             dlg.title = "Save log file"
             dlg.filter = "Text files (*.txt);;All Files (*.*)"
             dlg.isMultiSelectEnabled = False
-            dlg.initialDirectory = os.path.expanduser("~/Documents")
+            dlg.initialDirectory = os.path.expanduser(
+                "~/Documents"
+            )  # Default to Documents
             dlg.initialFilename = _propose_default_log_filename()
+
+            # If user selected a file, update the path input
             if dlg.showSave() == adsk.core.DialogResults.DialogOK:
                 sel_path = dlg.filename
                 path_input = adsk.core.StringValueCommandInput.cast(
