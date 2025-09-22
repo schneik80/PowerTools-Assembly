@@ -144,7 +144,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         SKIP_STANDARD_ID, "Skip standard components", True, "", True
     )
     main_inputs.addBoolValueInput(
-        SKIP_SAVED_ID, "Skip already saved components", True, "", True
+        SKIP_SAVED_ID, "Skip already saved components", True, "", False
     )
     main_inputs.addBoolValueInput(
         APPLY_INTENT_ID, "Apply design intent before save", True, "", False
@@ -259,8 +259,41 @@ def assembly_dict_to_ascii(assembly_dict):
     return "\n".join(ascii_lines)
 
 
+def hide_origins_in_document(document):
+    """
+    Hide all coordinate system origins in the specified document.
+
+    :param document: The Fusion document to process
+    :return: A log string describing what was hidden
+    """
+    try:
+        app = adsk.core.Application.get()
+        ui = app.userInterface
+
+        # Get the active design
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return "No active design found"
+
+        # Use Fusion API to directly control origin visibility
+        try:
+            # Check if the origin folder light bulb is on (visible) and turn it off
+            if design.activeComponent.isOriginFolderLightBulbOn:
+                design.activeComponent.isOriginFolderLightBulbOn = False
+                return f"   Successfully hidden origins using Fusion API"
+            else:
+                return "   Origins were already hidden"
+
+        except Exception as api_e:
+            return f"Error using Fusion API to hide origins: {str(api_e)}"
+
+    except Exception as e:
+        return f"Error hiding origins: {str(e)}"
+
+
 def command_execute(args: adsk.core.CommandEventArgs):
     # ...existing code...
+    global product, design, title, saved
     from datetime import datetime
 
     def write_log_entry(entry):
@@ -298,6 +331,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
         ).value
         skip_saved = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(SKIP_SAVED_ID)
+        ).value
+        hide_origins = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(HIDE_ORIGINS_ID)
         ).value
 
         # Build the assembly structure and determine processing order
@@ -378,7 +414,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 component.parentDesign.parentDocument, "designDataFile", None
             )
             if design_data_file is None:
-                log_entry = f"Skipped component (no designDataFile): {component_name}"
+                log_entry = f"Skipping Component (no designDataFile): {component_name}"
                 write_log_entry(log_entry)
                 continue
             docid = design_data_file.id
@@ -393,12 +429,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
             # Skip standard components if option is enabled
             if skip_standard and parent_project == "Standard Components":
-                log_entry = f"Skipped standard component: {component_name}"
+                log_entry = f"Skipping standard component: {component_name}"
                 write_log_entry(log_entry)
 
             # Skip already saved components if option is enabled
             if skip_saved and app.activeDocument.version == app.version:
-                log_entry = f"Skipped already saved component: {component_name}"
+                log_entry = f"Skipping already saved component: {component_name}"
                 write_log_entry(log_entry)
                 continue
 
@@ -410,6 +446,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
             # Open the component's document for editing
             document = app.data.findFileById(docid)
             app.documents.open(document, True)
+            # Log the document open event
+            futil.log(f"Opened component: {component_name}")
+            write_log_entry(f"Opened component: {component_name}")
             # Update all references in the newly opened document
             opened_doc = app.activeDocument
             opened_doc.updateAllReferences()
@@ -420,13 +459,19 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 workspace.activate()
             des = adsk.fusion.Design.cast(app.activeProduct)
 
+            # Hide origins if option is enabled
+            if hide_origins:
+                hide_log = hide_origins_in_document(opened_doc)
+                futil.log(f"   Hide origins for {component_name}: {hide_log}")
+                write_log_entry(f"   Hide origins for {component_name}: {hide_log}")
+
             # Rebuild the component if rebuild option is enabled
             if rebuild_all:
-                futil.log(f"Rebuilding component: {component_name}")
+                futil.log(f"  Rebuilding component: {component_name}")
                 while not des.computeAll():  # Force compute until complete
                     adsk.doEvents()
                     time.sleep(0.1)  # Optional: Add a small delay to observe the update
-                futil.log(f"Rebuild complete: {component_name}")
+                futil.log(f"   Rebuild complete: {component_name}")
 
             # Add and remove a temporary attribute to trigger change detection
             des.attributes.add("FusionRA", "FusionRA", component_name)
@@ -439,7 +484,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
             app.activeDocument.close(True)  # Close after saving
-            log_entry = f"{component_name} saved - [{timestamp}]"
+            log_entry = f"   {component_name} saved - [{timestamp}]"
             write_log_entry(log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
             des = None  # Clear design reference
@@ -481,17 +526,35 @@ def command_execute(args: adsk.core.CommandEventArgs):
             except Exception as log_e:
                 futil.log(f"Failed to write log: {log_e}")
                 completion_msg += f"\nFailed to write log to: {file_path}\n{log_e}"
+
+        # Clear global variables for next run
+        saved.clear()  # Clear the set of processed document IDs
+        product = None
+        design = None
+        title = None
+        futil.log("Cleared global variables for next execution")
+
         ui.messageBox(completion_msg)  # Show completion message to user
     except Exception as e:
+        # Clear global variables even on failure to ensure clean state for next run
+        saved.clear()
+        product = None
+        design = None
+        title = None
+        futil.log("Cleared global variables after error")
         if ui:
             ui.messageBox(f"Failed:\n{traceback.format_exc()}")
 
 
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
-    global local_handlers
+    global local_handlers, saved, product, design, title
     local_handlers = []
-    futil.log(f"{CMD_NAME} Command Destroy Event")
+    saved.clear()  # Clear the set of processed document IDs
+    product = None
+    design = None
+    title = None
+    futil.log(f"{CMD_NAME} Command Destroy Event - cleared global variables")
 
 
 def _propose_default_log_filename() -> str:
