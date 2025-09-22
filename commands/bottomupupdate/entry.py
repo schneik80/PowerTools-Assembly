@@ -561,11 +561,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
             # Rebuild the component if rebuild option is enabled
             if rebuild_all:
-                futil.log(f"  Rebuilding component: {component_name}")
+                futil.log(f"   Rebuilding component: {component_name}")
                 while not des.computeAll():  # Force compute until complete
                     adsk.doEvents()
                     time.sleep(0.1)  # Optional: Add a small delay to observe the update
                 futil.log(f"   Rebuild complete: {component_name}")
+                write_log_entry(f"   Rebuilt {component_name}")
 
             # Add and remove a temporary attribute to trigger change detection
             des.attributes.add("FusionRA", "FusionRA", component_name)
