@@ -232,10 +232,11 @@ def is_external_component(comp: adsk.fusion.Component):
     return any(occ.isReferencedComponent for occ in occs)
 
 
-def assembly_dict_to_ascii(assembly_dict):
+def assembly_dict_to_ascii(assembly_dict, root_doc_name=None):
     """
     Generate an ASCII diagram as a string from the assembly_dict structure.
     :param assembly_dict: The dictionary representing the assembly structure.
+    :param root_doc_name: Optional name of the root/start document to show at the top
     :return: A string containing the ASCII diagram.
     """
 
@@ -252,10 +253,29 @@ def assembly_dict_to_ascii(assembly_dict):
         return lines
 
     ascii_lines = []
+
+    # Add root document at the top if provided
+    if root_doc_name:
+        ascii_lines.append(root_doc_name)
+
     items = list(assembly_dict.values())
     for idx, node in enumerate(items):
         is_last = idx == len(items) - 1
-        ascii_lines.extend(build_ascii(node, "", is_last))
+        # Adjust prefix if we have a root document name
+        prefix = (
+            "└── "
+            if root_doc_name and is_last and len(items) == 1
+            else ("├── " if root_doc_name else "")
+        )
+        if root_doc_name:
+            child_prefix = "    " if is_last else "│   "
+            lines = build_ascii(node, child_prefix, is_last)
+            ascii_lines.append(
+                prefix + lines[0][4:]
+            )  # Remove the original prefix from first line
+            ascii_lines.extend(lines[1:])  # Add remaining lines as-is
+        else:
+            ascii_lines.extend(build_ascii(node, "", is_last))
     return "\n".join(ascii_lines)
 
 
@@ -268,7 +288,6 @@ def hide_origins_in_document(document):
     """
     try:
         app = adsk.core.Application.get()
-        ui = app.userInterface
 
         # Get the active design
         design = adsk.fusion.Design.cast(app.activeProduct)
@@ -280,15 +299,68 @@ def hide_origins_in_document(document):
             # Check if the origin folder light bulb is on (visible) and turn it off
             if design.activeComponent.isOriginFolderLightBulbOn:
                 design.activeComponent.isOriginFolderLightBulbOn = False
-                return f"   Successfully hidden origins using Fusion API"
+                return f"   Origin hidden "
             else:
-                return "   Origins were already hidden"
+                return "   Origin was already hidden"
 
         except Exception as api_e:
             return f"Error using Fusion API to hide origins: {str(api_e)}"
 
     except Exception as e:
         return f"Error hiding origins: {str(e)}"
+
+
+def hide_joint_origins_in_document(document):
+    """
+    Hide all joint origins in the specified document.
+
+    :param document: The Fusion document to process
+    :return: A log string describing what was hidden
+    """
+    try:
+        app = adsk.core.Application.get()
+
+        # Get the active design
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return "No active design found"
+
+        # Use Fusion API to directly control joint origin visibility
+        try:
+            # Set the joint origins folder light bulb to true (ensure folder is accessible)
+            design.activeComponent.isJointOriginsFolderLightBulbOn = True
+
+            # Check if there are joint origins to hide
+            joint_origins = design.activeComponent.jointOrigins
+            if joint_origins.count > 0:
+                hidden_count = 0
+                # Iterate over each joint origin and try to hide it
+                for i in range(joint_origins.count):
+                    joint_origin = joint_origins.item(i)
+                    try:
+                        # Try to use the light bulb property if available
+                        if (
+                            hasattr(joint_origin, "isLightBulbOn")
+                            and joint_origin.isLightBulbOn
+                        ):
+                            joint_origin.isLightBulbOn = False
+                            hidden_count += 1
+                    except:
+                        # If individual control fails, continue to next
+                        continue
+
+                if hidden_count > 0:
+                    return f"   joint origins hidden ({hidden_count})"
+                else:
+                    return "   Attempted to hide joint origins - individual visibility control may be limited"
+            else:
+                return "   No joint origins found in document"
+
+        except Exception as api_e:
+            return f"Error using Fusion API to hide joint origins: {str(api_e)}"
+
+    except Exception as e:
+        return f"Error hiding joint origins: {str(e)}"
 
 
 def command_execute(args: adsk.core.CommandEventArgs):
@@ -335,14 +407,26 @@ def command_execute(args: adsk.core.CommandEventArgs):
         hide_origins = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_ORIGINS_ID)
         ).value
+        hide_joint_origins = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(HIDE_JOINTORIGINS_ID)
+        ).value
 
         # Build the assembly structure and determine processing order
         root_component = design.rootComponent
         assembly_dict = {}
         traverse_assembly(root_component, assembly_dict)  # Build component hierarchy
         bottom_up_order = sort_dag_bottom_up(assembly_dict)  # Sort for dependency order
+
+        # Get the root document name for the ASCII diagram
+        root_doc_name = "RootComponent"
+        try:
+            if app.activeDocument and app.activeDocument.name:
+                root_doc_name = app.activeDocument.name
+        except:
+            pass
+
         dagString = assembly_dict_to_ascii(
-            assembly_dict
+            assembly_dict, root_doc_name
         )  # Create visual representation
         futil.log("Assembly Structure:\n" + dagString)
         docCount = len(bottom_up_order)
@@ -464,6 +548,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 hide_log = hide_origins_in_document(opened_doc)
                 futil.log(f"   Hide origins for {component_name}: {hide_log}")
                 write_log_entry(f"   Hide origins for {component_name}: {hide_log}")
+
+            # Hide joint origins if option is enabled
+            if hide_joint_origins:
+                hide_joint_log = hide_joint_origins_in_document(opened_doc)
+                futil.log(
+                    f"   Hide joint origins for {component_name}: {hide_joint_log}"
+                )
+                write_log_entry(
+                    f"   Hide joint origins for {component_name}: {hide_joint_log}"
+                )
 
             # Rebuild the component if rebuild option is enabled
             if rebuild_all:
