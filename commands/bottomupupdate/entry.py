@@ -37,7 +37,7 @@ SKIP_STANDARD_ID = "skip_standard"  # Checkbox to skip standard library componen
 SKIP_SAVED_ID = "skip_saved"  # Checkbox to skip components that are already saved
 HIDE_ORIGINS_ID = "hide_origins"  # Checkbox to hide coordinate system origins
 HIDE_JOINTS_ID = "hide_joints"  # Checkbox to hide joint elements in the model
-HIDE_CONSTRAINTS_ID = "hide_constraints"  # Checkbox to hide assembly constraints
+HIDE_SKETCHES_ID = "hide_sketches"  # Checkbox to hide component sketches
 HIDE_JOINTORIGINS_ID = "hide_jointorigins"  # Checkbox to hide joint origin markers
 APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent before saving
 LOG_ENABLE_ID = "enable_log"  # Checkbox to enable progress logging
@@ -155,9 +155,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     vis_inputs = vis_tab.children
     vis_inputs.addBoolValueInput(HIDE_ORIGINS_ID, "Hide origins", True, "", False)
     vis_inputs.addBoolValueInput(HIDE_JOINTS_ID, "Hide joints", True, "", False)
-    vis_inputs.addBoolValueInput(
-        HIDE_CONSTRAINTS_ID, "Hide constraints", True, "", False
-    )
+    vis_inputs.addBoolValueInput(HIDE_SKETCHES_ID, "Hide sketches", True, "", False)
     vis_inputs.addBoolValueInput(
         HIDE_JOINTORIGINS_ID, "Hide joint origins", True, "", False
     )
@@ -363,6 +361,56 @@ def hide_joint_origins_in_document(document):
         return f"Error hiding joint origins: {str(e)}"
 
 
+def hide_sketches_in_document(document):
+    """
+    Hide all sketches in the specified document.
+
+    :param document: The Fusion document to process
+    :return: A log string describing what was hidden
+    """
+    try:
+        app = adsk.core.Application.get()
+
+        # Get the active design
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return "No active design found"
+
+        # Use Fusion API to directly control sketch visibility
+        try:
+            # Set the sketches folder light bulb to true (ensure folder is accessible)
+            design.activeComponent.isSketchFolderLightBulbOn = True
+
+            # Check if there are sketches to hide
+            sketches = design.activeComponent.sketches
+            if sketches.count > 0:
+                hidden_count = 0
+                # Iterate over each sketch and try to hide it
+                for i in range(sketches.count):
+                    sketch = sketches.item(i)
+                    try:
+                        # Try to use the light bulb property if available
+                        if hasattr(sketch, "isLightBulbOn") and sketch.isLightBulbOn:
+                            sketch.isLightBulbOn = False
+                            hidden_count += 1
+                    except:
+                        # If individual control fails, continue to next
+                        continue
+
+                if hidden_count > 0:
+                    return f"   sketches hidden ({hidden_count})"
+                else:
+                    return "   Attempted to hide sketches - individual visibility control may be limited"
+            else:
+                return "   No sketches found in document"
+
+        except Exception as api_e:
+            return f"Error using Fusion API to hide sketches: {str(api_e)}"
+
+    except Exception as e:
+        return f"Error hiding sketches: {str(e)}"
+
+
 def command_execute(args: adsk.core.CommandEventArgs):
     # ...existing code...
     global product, design, title, saved
@@ -406,6 +454,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
         ).value
         hide_origins = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_ORIGINS_ID)
+        ).value
+        hide_sketches = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(HIDE_SKETCHES_ID)
         ).value
         hide_joint_origins = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_JOINTORIGINS_ID)
@@ -557,6 +608,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 )
                 write_log_entry(
                     f"   Hide joint origins for {component_name}: {hide_joint_log}"
+                )
+
+            # Hide sketches if option is enabled
+            if hide_sketches:
+                hide_sketch_log = hide_sketches_in_document(opened_doc)
+                futil.log(f"   Hide sketches for {component_name}: {hide_sketch_log}")
+                write_log_entry(
+                    f"   Hide sketches for {component_name}: {hide_sketch_log}"
                 )
 
             # Rebuild the component if rebuild option is enabled
