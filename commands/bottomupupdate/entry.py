@@ -514,6 +514,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
     global product, design, title, saved
     from datetime import datetime
 
+    app = adsk.core.Application.get()
+    ui = app.userInterface
+    start_total_time = time.time()  # Track total execution time
+
+    # Initialize logging variables early
+    create_log = False
+    file_path = None
+
     def write_log_entry(entry):
         """Helper function to write entries to the log file if logging is enabled"""
         if create_log and file_path:
@@ -523,9 +531,6 @@ def command_execute(args: adsk.core.CommandEventArgs):
             except Exception as log_e:
                 futil.log(f"Failed to write log entry: {log_e}")
 
-    app = adsk.core.Application.get()
-    ui = app.userInterface
-    start_total_time = time.time()  # Track total execution time
     try:
         design = app.activeProduct
         appVersionBuild = app.version  # Store Fusion version for save comments
@@ -566,6 +571,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
             inputs.itemById(HIDE_CANVASES_ID)
         ).value
 
+        # Initialize logging variables
+        saved_doc_count = 0  # Track how many documents were actually saved
+
         # Build the assembly structure and determine processing order
         root_component = design.rootComponent
         assembly_dict = {}
@@ -574,12 +582,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         docCount = len(bottom_up_order)
         futil.log(f"Bottom-up order: {bottom_up_order}")
+        write_log_entry(f"Bottom-up order: {bottom_up_order}")
         if docCount == 0:
             ui.messageBox("No components found in the assembly.")
             return
         futil.log(f"----- Starting saving {docCount} components -----")
-        saved_doc_count = 0  # Track how many documents were actually saved
-        file_path = None
+        write_log_entry(f"----- Starting saving {docCount} components -----")
 
         # Set up logging if enabled
         if create_log:
@@ -737,6 +745,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             # Rebuild the component if rebuild option is enabled
             if rebuild_all:
                 futil.log(f"   Rebuilding component: {component_name}")
+                write_log_entry(f"   Rebuilding component: {component_name}")
                 while not des.computeAll():  # Force compute until complete
                     adsk.doEvents()
                     time.sleep(0.1)  # Optional: Add a small delay to observe the update
@@ -759,16 +768,29 @@ def command_execute(args: adsk.core.CommandEventArgs):
             futil.log(log_entry)
             write_log_entry(log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
+
+            # Add progress separator
+            progress_msg = (
+                f"----- Completed {saved_doc_count} of {docCount} components -----"
+            )
+            futil.log(progress_msg)
+            write_log_entry(progress_msg)
+
             des = None  # Clear design reference
 
-        print(f"----- Components saved -----")
+        futil.log(f"----- Components saved -----")
+        write_log_entry(f"----- Components saved -----")
 
         # Execute Fusion commands to get latest versions and update references
+        futil.log("Executing GetAllLatestCmd...")
+        write_log_entry("Executing GetAllLatestCmd...")
         cmdDefs = ui.commandDefinitions
         cmdGet = cmdDefs.itemById("GetAllLatestCmd")  # Get all latest command
         while not cmdGet.execute():
             adsk.doEvents()
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
+        futil.log("Executing ContextUpdateAllFromParentCmd...")
+        write_log_entry("Executing ContextUpdateAllFromParentCmd...")
         cmdUpdate = cmdDefs.itemById(
             "ContextUpdateAllFromParentCmd"
         )  # Update all from parent
@@ -777,6 +799,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
 
         # Save the active document after updating references
+        futil.log("Saving active document after updating references...")
+        write_log_entry("Saving active document after updating references...")
         app.activeDocument.save(
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
         )
@@ -787,12 +811,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
         total_elapsed = (
             end_total_time - start_total_time
         )  # Calculate total execution time
+
+        # Log final statistics to both logging systems
+        futil.log(f"Total documents saved: {saved_doc_count}")
+        futil.log(f"Total command run time: {total_elapsed:.2f} seconds")
+        write_log_entry(f"Total documents saved: {saved_doc_count}")
+        write_log_entry(f"Total command run time: {total_elapsed:.2f} seconds")
+
         if create_log and file_path:
             try:
-                # Write final statistics to log file
-                with open(file_path, "a", encoding="utf-8") as fh:
-                    fh.write(f"\nTotal documents saved: {saved_doc_count}\n")
-                    fh.write(f"Total command run time: {total_elapsed:.2f} seconds\n")
                 futil.log(f"Log written to: {file_path}")
                 completion_msg += f"\nLog written to: {file_path}"
             except Exception as log_e:
@@ -805,7 +832,10 @@ def command_execute(args: adsk.core.CommandEventArgs):
         design = None
         title = None
         futil.log("Cleared global variables for next execution")
+        write_log_entry("Cleared global variables for next execution")
 
+        futil.log("Bottom-up Update completed successfully")
+        write_log_entry("Bottom-up Update completed successfully")
         ui.messageBox(completion_msg)  # Show completion message to user
     except Exception as e:
         # Clear global variables even on failure to ensure clean state for next run
@@ -814,6 +844,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         design = None
         title = None
         futil.log("Cleared global variables after error")
+        write_log_entry("Cleared global variables after error")
         if ui:
             ui.messageBox(f"Failed:\n{traceback.format_exc()}")
 
