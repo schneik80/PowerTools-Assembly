@@ -275,57 +275,6 @@ def is_external_component(comp: adsk.fusion.Component):
     return any(occ.isReferencedComponent for occ in occs)
 
 
-def assembly_dict_to_ascii(assembly_dict, root_doc_name=None):
-    """
-    Generate an ASCII diagram as a string from the assembly_dict structure.
-    :param assembly_dict: The dictionary representing the assembly structure.
-    :param root_doc_name: Optional name of the root/start document to show at the top
-    :return: A string containing the ASCII diagram.
-    """
-
-    def build_ascii(node, prefix="", is_last=True):
-        lines = []
-        comp_name = node["component"].name
-        connector = "└── " if is_last else "├── "
-        lines.append(prefix + connector + comp_name)
-        children = list(node["children"].values())
-        for idx, child in enumerate(children):
-            is_child_last = idx == len(children) - 1
-            child_prefix = prefix + ("    " if is_last else "│   ")
-            lines.extend(build_ascii(child, child_prefix, is_child_last))
-        return lines
-
-    ascii_lines = []
-
-    # Add root document at the top if provided
-    if root_doc_name:
-        ascii_lines.append(root_doc_name)
-
-    items = list(assembly_dict.values())
-    for idx, node in enumerate(items):
-        is_last = idx == len(items) - 1
-
-        if root_doc_name:
-            # Use appropriate prefix for children under root document
-            child_prefix = "    " if is_last else "│   "
-            lines = build_ascii(node, child_prefix, is_last)
-
-            # Add the root-level connector directly to component name
-            if lines:
-                connector = "└── " if is_last else "├── "
-                component_name = node["component"].name
-                ascii_lines.append(connector + component_name)
-                ascii_lines.extend(
-                    lines[1:]
-                )  # Skip first line since we handled it above
-        else:
-            # No root document, use standard build_ascii
-            lines = build_ascii(node, "", is_last)
-            ascii_lines.extend(lines)
-
-    return "\n".join(ascii_lines)
-
-
 def hide_origins_in_document(document):
     """
     Hide all coordinate system origins in the specified document.
@@ -623,18 +572,6 @@ def command_execute(args: adsk.core.CommandEventArgs):
         traverse_assembly(root_component, assembly_dict)  # Build component hierarchy
         bottom_up_order = sort_dag_bottom_up(assembly_dict)  # Sort for dependency order
 
-        # Get the root document name for the ASCII diagram
-        root_doc_name = "RootComponent"
-        try:
-            if app.activeDocument and app.activeDocument.name:
-                root_doc_name = app.activeDocument.name
-        except:
-            pass
-
-        dagString = assembly_dict_to_ascii(
-            assembly_dict, root_doc_name
-        )  # Create visual representation
-        futil.log("Assembly Structure:\n" + dagString)
         docCount = len(bottom_up_order)
         futil.log(f"Bottom-up order: {bottom_up_order}")
         if docCount == 0:
@@ -692,9 +629,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     fh.write(f"  Create log file: {create_log}\n")
                     fh.write(f"  Skip standard components: {skip_standard}\n")
                     fh.write(f"  Log file path: {file_path}\n")
-                    fh.write("\nAssembly Diagram:\n")
-                    fh.write(dagString)
-                    fh.write("\n\nBottom-up order:\n")
+                    fh.write("\nBottom-up order:\n")
                     fh.write("\n".join(bottom_up_order))
                     fh.write("\n\nDocument save log:\n")
             except Exception as log_e:
