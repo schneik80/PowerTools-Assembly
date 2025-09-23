@@ -1,6 +1,7 @@
 import adsk.core, adsk.fusion
 import os, re, traceback
 import time
+import sys
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -656,7 +657,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 if not base_name.lower().endswith(".log"):
                     base_name += ".log"
                 # Default location is user Documents folder
-                file_path = os.path.join(os.path.expanduser("~/Documents"), base_name)
+                if sys.platform == "win32":
+                    documents_folder = os.path.join(
+                        os.environ.get("USERPROFILE", os.path.expanduser("~")),
+                        "Documents",
+                    )
+                else:
+                    documents_folder = os.path.expanduser("~/Documents")
+                file_path = os.path.join(documents_folder, base_name)
             # Write initial log info at start
             try:
                 with open(file_path, "w", encoding="utf-8") as fh:
@@ -803,9 +811,23 @@ def command_execute(args: adsk.core.CommandEventArgs):
             app.activeDocument.save(
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
+            # Wait for upload to finish before proceeding
+            data_file = app.activeDocument.dataFile
+            try:
+                # 2 is typically the value for 'Uploaded' state; update if API changes
+                while (
+                    hasattr(data_file, "uploadState")
+                    and getattr(data_file, "uploadState", None) != 2
+                ):
+                    adsk.doEvents()
+                    time.sleep(0.5)
+            except Exception as upload_e:
+                futil.log(f"Error waiting for upload: {upload_e}")
             app.activeDocument.close(True)  # Close after saving
             log_entry = f"   {component_name} saved - [{timestamp}]"
             write_log_entry(log_entry)
+            upload_log_entry = f"   {component_name} upload finished - [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
+            write_log_entry(upload_log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
             des = None  # Clear design reference
 
