@@ -304,21 +304,25 @@ def assembly_dict_to_ascii(assembly_dict, root_doc_name=None):
     items = list(assembly_dict.values())
     for idx, node in enumerate(items):
         is_last = idx == len(items) - 1
-        # Adjust prefix if we have a root document name
-        prefix = (
-            "└── "
-            if root_doc_name and is_last and len(items) == 1
-            else ("├── " if root_doc_name else "")
-        )
+
         if root_doc_name:
+            # Use appropriate prefix for children under root document
             child_prefix = "    " if is_last else "│   "
             lines = build_ascii(node, child_prefix, is_last)
-            ascii_lines.append(
-                prefix + lines[0][4:]
-            )  # Remove the original prefix from first line
-            ascii_lines.extend(lines[1:])  # Add remaining lines as-is
+
+            # Add the root-level connector directly to component name
+            if lines:
+                connector = "└── " if is_last else "├── "
+                component_name = node["component"].name
+                ascii_lines.append(connector + component_name)
+                ascii_lines.extend(
+                    lines[1:]
+                )  # Skip first line since we handled it above
         else:
-            ascii_lines.extend(build_ascii(node, "", is_last))
+            # No root document, use standard build_ascii
+            lines = build_ascii(node, "", is_last)
+            ascii_lines.extend(lines)
+
     return "\n".join(ascii_lines)
 
 
@@ -811,23 +815,10 @@ def command_execute(args: adsk.core.CommandEventArgs):
             app.activeDocument.save(
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
-            # Wait for upload to finish before proceeding
-            data_file = app.activeDocument.dataFile
-            try:
-                # 2 is typically the value for 'Uploaded' state; update if API changes
-                while (
-                    hasattr(data_file, "uploadState")
-                    and getattr(data_file, "uploadState", None) != 2
-                ):
-                    adsk.doEvents()
-                    time.sleep(0.5)
-            except Exception as upload_e:
-                futil.log(f"Error waiting for upload: {upload_e}")
+
             app.activeDocument.close(True)  # Close after saving
             log_entry = f"   {component_name} saved - [{timestamp}]"
             write_log_entry(log_entry)
-            upload_log_entry = f"   {component_name} upload finished - [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-            write_log_entry(upload_log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
             des = None  # Clear design reference
 
