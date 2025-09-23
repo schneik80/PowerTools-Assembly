@@ -39,6 +39,7 @@ HIDE_ORIGINS_ID = "hide_origins"  # Checkbox to hide coordinate system origins
 HIDE_JOINTS_ID = "hide_joints"  # Checkbox to hide joint elements in the model
 HIDE_SKETCHES_ID = "hide_sketches"  # Checkbox to hide component sketches
 HIDE_JOINTORIGINS_ID = "hide_jointorigins"  # Checkbox to hide joint origin markers
+HIDE_CANVASES_ID = "hide_canvases"  # Checkbox to hide canvases
 APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent before saving
 LOG_ENABLE_ID = "enable_log"  # Checkbox to enable progress logging
 LOG_PATH_ID = "log_path"  # Text input for custom log file path
@@ -139,26 +140,60 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Main tab
     main_tab = inputs.addTabCommandInput("mainTab", "Main")
     main_inputs = main_tab.children
-    main_inputs.addBoolValueInput(REBUILD_INPUT_ID, "Rebuild all", True, "", True)
-    main_inputs.addBoolValueInput(
+
+    rebuild_input = main_inputs.addBoolValueInput(
+        REBUILD_INPUT_ID, "Rebuild all", True, "", True
+    )
+    rebuild_input.tooltip = (
+        "Forces a complete rebuild of all components to ensure they are up to date."
+    )
+
+    skip_standard_input = main_inputs.addBoolValueInput(
         SKIP_STANDARD_ID, "Skip standard components", True, "", True
     )
-    main_inputs.addBoolValueInput(
-        SKIP_SAVED_ID, "Skip already saved components", True, "", False
+    skip_standard_input.tooltip = (
+        "Skip processing of standard library component Documents."
     )
-    main_inputs.addBoolValueInput(
-        APPLY_INTENT_ID, "Apply design intent before save", True, "", False
+
+    skip_saved_input = main_inputs.addBoolValueInput(
+        SKIP_SAVED_ID, "Skip already saved Documents", True, "", False
     )
+    skip_saved_input.tooltip = (
+        "Skip Documents that have already been saved in this Fusion client build."
+    )
+
+    apply_intent_input = main_inputs.addBoolValueInput(
+        APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", False
+    )
+    apply_intent_input.tooltip = "Applies design intent (Part, Assembly, or Hybrid) to the document's root component."
 
     # Visualization tab
     vis_tab = inputs.addTabCommandInput("visTab", "Visibility")
     vis_inputs = vis_tab.children
-    vis_inputs.addBoolValueInput(HIDE_ORIGINS_ID, "Hide origins", True, "", False)
-    vis_inputs.addBoolValueInput(HIDE_JOINTS_ID, "Hide joints", True, "", False)
-    vis_inputs.addBoolValueInput(HIDE_SKETCHES_ID, "Hide sketches", True, "", False)
-    vis_inputs.addBoolValueInput(
+    hide_origins_input = vis_inputs.addBoolValueInput(
+        HIDE_ORIGINS_ID, "Hide origins", True, "", False
+    )
+    hide_origins_input.tooltip = "Hide the origin in the document's root component."
+
+    hide_joints_input = vis_inputs.addBoolValueInput(
+        HIDE_JOINTS_ID, "Hide joints", True, "", False
+    )
+    hide_joints_input.tooltip = "Hides all joints. \n \nSet the Joint Folder visibility off to hide any new Joints created."
+
+    hide_sketches_input = vis_inputs.addBoolValueInput(
+        HIDE_SKETCHES_ID, "Hide sketches", True, "", False
+    )
+    hide_sketches_input.tooltip = "Hides each sketch in the document's root component.\n \nSet the Sketch Folder visibility On to show any new Sketches created."
+
+    hide_joint_origins_input = vis_inputs.addBoolValueInput(
         HIDE_JOINTORIGINS_ID, "Hide joint origins", True, "", False
     )
+    hide_joint_origins_input.tooltip = "Hides each joint origin in the document's root component before saving.\n \nSet the Joint Origins Folder visibility On to show any new Joint Origins created."
+
+    hide_canvases_input = vis_inputs.addBoolValueInput(
+        HIDE_CANVASES_ID, "Hide canvases", True, "", False
+    )
+    hide_canvases_input.tooltip = "Hides each canvas in the document's root component before saving.\n \nSet the Canvases Folder visibility On to show any new Canvases created."
 
     # Logging tab
     log_tab = inputs.addTabCommandInput("logTab", "Logging")
@@ -166,11 +201,20 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     log_enable = log_inputs.addBoolValueInput(
         LOG_ENABLE_ID, "Log Progress", True, "", True
     )
+    log_enable.tooltip = (
+        "Enables detailed progress logging to a text file during the update process."
+    )
+
     log_path = log_inputs.addStringValueInput(LOG_PATH_ID, "Log file path", "")
     log_path.isReadOnly = True
+
     browse_btn = log_inputs.addBoolValueInput(
         LOG_BROWSE_ID, "Browse…", False, "", False
     )
+    browse_btn.tooltip = (
+        "Click to browse and select a custom location for the log file."
+    )
+
     log_path.isEnabled = log_enable.value
     browse_btn.isEnabled = log_enable.value
 
@@ -411,6 +455,106 @@ def hide_sketches_in_document(document):
         return f"Error hiding sketches: {str(e)}"
 
 
+def hide_joints_in_document(document):
+    """
+    Hide all joints in the specified document.
+
+    :param document: The Fusion document to process
+    :return: A log string describing what was hidden
+    """
+    try:
+        app = adsk.core.Application.get()
+
+        # Get the active design
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return "No active design found"
+
+        # Use Fusion API to directly control joint visibility
+        try:
+            # Set the joints folder light bulb to false (hide folder)
+            design.activeComponent.isJointsFolderLightBulbOn = False
+
+            # Check if there are joints to hide
+            joints = design.activeComponent.joints
+            if joints.count > 0:
+                hidden_count = 0
+                # Iterate over each joint and try to hide it
+                for i in range(joints.count):
+                    joint = joints.item(i)
+                    try:
+                        # Try to use the light bulb property if available
+                        if hasattr(joint, "isLightBulbOn") and joint.isLightBulbOn:
+                            joint.isLightBulbOn = False
+                            hidden_count += 1
+                    except:
+                        # If individual control fails, continue to next
+                        continue
+
+                if hidden_count > 0:
+                    return f"   joints hidden ({hidden_count})"
+                else:
+                    return "   Attempted to hide joints - individual visibility control may be limited"
+            else:
+                return "   No joints found in document"
+
+        except Exception as api_e:
+            return f"Error using Fusion API to hide joints: {str(api_e)}"
+
+    except Exception as e:
+        return f"Error hiding joints: {str(e)}"
+
+
+def hide_canvases_in_document(document):
+    """
+    Hide all canvases in the specified document.
+
+    :param document: The Fusion document to process
+    :return: A log string describing what was hidden
+    """
+    try:
+        app = adsk.core.Application.get()
+
+        # Get the active design
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return "No active design found"
+
+        # Use Fusion API to directly control canvas visibility
+        try:
+            # Set the canvases folder light bulb to false (hide folder)
+            design.activeComponent.isCanvasFolderLightBulbOn = False
+
+            # Check if there are canvases to hide
+            canvases = design.activeComponent.canvases
+            if canvases.count > 0:
+                hidden_count = 0
+                # Iterate over each canvas and try to hide it
+                for i in range(canvases.count):
+                    canvas = canvases.item(i)
+                    try:
+                        # Try to use the light bulb property if available
+                        if hasattr(canvas, "isLightBulbOn") and canvas.isLightBulbOn:
+                            canvas.isLightBulbOn = False
+                            hidden_count += 1
+                    except:
+                        # If individual control fails, continue to next
+                        continue
+
+                if hidden_count > 0:
+                    return f"   canvases hidden ({hidden_count})"
+                else:
+                    return "   Attempted to hide canvases - individual visibility control may be limited"
+            else:
+                return "   No canvases found in document"
+
+        except Exception as api_e:
+            return f"Error using Fusion API to hide canvases: {str(api_e)}"
+
+    except Exception as e:
+        return f"Error hiding canvases: {str(e)}"
+
+
 def command_execute(args: adsk.core.CommandEventArgs):
     # ...existing code...
     global product, design, title, saved
@@ -455,11 +599,17 @@ def command_execute(args: adsk.core.CommandEventArgs):
         hide_origins = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_ORIGINS_ID)
         ).value
+        hide_joints = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(HIDE_JOINTS_ID)
+        ).value
         hide_sketches = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_SKETCHES_ID)
         ).value
         hide_joint_origins = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(HIDE_JOINTORIGINS_ID)
+        ).value
+        hide_canvases = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(HIDE_CANVASES_ID)
         ).value
 
         # Build the assembly structure and determine processing order
@@ -600,6 +750,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 futil.log(f"   Hide origins for {component_name}: {hide_log}")
                 write_log_entry(f"   Hide origins for {component_name}: {hide_log}")
 
+            # Hide joints if option is enabled
+            if hide_joints:
+                hide_joint_log = hide_joints_in_document(opened_doc)
+                futil.log(f"   Hide joints for {component_name}: {hide_joint_log}")
+                write_log_entry(
+                    f"   Hide joints for {component_name}: {hide_joint_log}"
+                )
+
             # Hide joint origins if option is enabled
             if hide_joint_origins:
                 hide_joint_log = hide_joint_origins_in_document(opened_doc)
@@ -616,6 +774,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 futil.log(f"   Hide sketches for {component_name}: {hide_sketch_log}")
                 write_log_entry(
                     f"   Hide sketches for {component_name}: {hide_sketch_log}"
+                )
+
+            # Hide canvases if option is enabled
+            if hide_canvases:
+                hide_canvas_log = hide_canvases_in_document(opened_doc)
+                futil.log(f"   Hide canvases for {component_name}: {hide_canvas_log}")
+                write_log_entry(
+                    f"   Hide canvases for {component_name}: {hide_canvas_log}"
                 )
 
             # Rebuild the component if rebuild option is enabled
