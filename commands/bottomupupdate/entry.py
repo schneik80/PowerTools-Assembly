@@ -647,6 +647,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             )
             if design_data_file is None:
                 log_entry = f"Skipping Component (no designDataFile): {component_name}"
+                futil.log(log_entry)
                 write_log_entry(log_entry)
                 continue
             docid = design_data_file.id
@@ -662,11 +663,13 @@ def command_execute(args: adsk.core.CommandEventArgs):
             # Skip standard components if option is enabled
             if skip_standard and parent_project == "Standard Components":
                 log_entry = f"Skipping standard component: {component_name}"
+                futil.log(log_entry)
                 write_log_entry(log_entry)
 
             # Skip already saved components if option is enabled
             if skip_saved and app.activeDocument.version == app.version:
                 log_entry = f"Skipping already saved component: {component_name}"
+                futil.log(log_entry)
                 write_log_entry(log_entry)
                 continue
 
@@ -753,6 +756,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
             app.activeDocument.close(True)  # Close after saving
             log_entry = f"   {component_name} saved - [{timestamp}]"
+            futil.log(log_entry)
             write_log_entry(log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
             des = None  # Clear design reference
