@@ -742,6 +742,91 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     f"   Hide canvases for {component_name}: {hide_canvas_log}"
                 )
 
+            # Apply design intent if option is enabled
+            apply_intent = adsk.core.BoolValueCommandInput.cast(
+                inputs.itemById(APPLY_INTENT_ID)
+            ).value
+
+            if apply_intent:
+                # Check if the document has children (is it a leaf node)
+                if des and des.rootComponent.occurrences.count == 0:
+                    futil.log(
+                        f"   Applying part intent to {component_name} (no children)"
+                    )
+                    write_log_entry(
+                        f"   Applying part intent to {component_name} (no children)"
+                    )
+
+                    cmdMakePart = "Fusion.setDocumentExperience Part"
+                    try:
+                        app.executeTextCommand(cmdMakePart)
+                        futil.log(f"   Part intent applied to {component_name}")
+                        write_log_entry(f"   Part intent applied to {component_name}")
+                    except Exception as intent_error:
+                        futil.log(
+                            f"   Failed to apply part intent to {component_name}: {intent_error}"
+                        )
+                        write_log_entry(
+                            f"   Failed to apply part intent to {component_name}: {intent_error}"
+                        )
+                else:
+                    child_count = des.rootComponent.occurrences.count if des else 0
+
+                    # Check for sketches and bodies to determine hybrid assembly
+                    sketch_count = des.rootComponent.sketches.count if des else 0
+                    body_count = des.rootComponent.bRepBodies.count if des else 0
+
+                    if sketch_count > 0 or body_count > 0:
+                        # Has children AND has sketches or bodies = hybrid assembly
+                        futil.log(
+                            f"   Applying hybrid assembly intent to {component_name} ({child_count} children, {sketch_count} sketches, {body_count} bodies)"
+                        )
+                        write_log_entry(
+                            f"   Applying hybrid assembly intent to {component_name} ({child_count} children, {sketch_count} sketches, {body_count} bodies)"
+                        )
+
+                        cmdMakeHybrid = (
+                            "Fusion.setDocumentExperience xrefAssembly hybridAssembly"
+                        )
+                        try:
+                            app.executeTextCommand(cmdMakeHybrid)
+                            futil.log(
+                                f"   Hybrid assembly intent applied to {component_name}"
+                            )
+                            write_log_entry(
+                                f"   Hybrid assembly intent applied to {component_name}"
+                            )
+                        except Exception as intent_error:
+                            futil.log(
+                                f"   Failed to apply hybrid assembly intent to {component_name}: {intent_error}"
+                            )
+                            write_log_entry(
+                                f"   Failed to apply hybrid assembly intent to {component_name}: {intent_error}"
+                            )
+                    else:
+                        # Has children but no sketches or bodies = regular assembly
+                        futil.log(
+                            f"   Applying assembly intent to {component_name} ({child_count} children, no sketches/bodies)"
+                        )
+                        write_log_entry(
+                            f"   Applying assembly intent to {component_name} ({child_count} children, no sketches/bodies)"
+                        )
+
+                        cmdMakeAssembly = "Fusion.setDocumentExperience xrefAssembly"
+                        try:
+                            app.executeTextCommand(cmdMakeAssembly)
+                            futil.log(f"   Assembly intent applied to {component_name}")
+                            write_log_entry(
+                                f"   Assembly intent applied to {component_name}"
+                            )
+                        except Exception as intent_error:
+                            futil.log(
+                                f"   Failed to apply assembly intent to {component_name}: {intent_error}"
+                            )
+                            write_log_entry(
+                                f"   Failed to apply assembly intent to {component_name}: {intent_error}"
+                            )
+
             # Rebuild the component if rebuild option is enabled
             if rebuild_all:
                 futil.log(f"   Rebuilding component: {component_name}")
