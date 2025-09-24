@@ -31,6 +31,17 @@ Typical x-ref assemblies will use assembly contexts to create associativity acro
 
 When working in a team it can be necessary to reload the active assembly to load new versions created by other team members. Int he file menu the Refresh command will automatically close, get new versions and then reload the active document, saving you time and nuisance of doing this manually
 
+**[Bottom-Up Update](./docs/Bottom-Up%20Update.md)**
+
+Save and update all references in the open assembly from the bottom up. Processes assembly components in dependency order to ensure proper reference updates.
+
+- Update components from dependencies upward through the assembly hierarchy
+- Optional rebuild of all components to ensure they are current
+- Skip standard library components and already processed documents
+- Apply appropriate design intent (Part, Assembly, or Hybrid) automatically
+- Hide various UI elements (origins, joints, sketches, canvases) for cleaner saves
+- Detailed progress logging with timestamps and processing statistics
+
 ---
 
 ## Information tools
@@ -38,10 +49,6 @@ When working in a team it can be necessary to reload the active assembly to load
 **[Assembly Statistics](./docs/Assembly%20Statistics.md)**
 
 Provide assembly information on the active document. Reports on components, references and joints.
-
-
-## UI Tweaks
-
 
 ---
 
