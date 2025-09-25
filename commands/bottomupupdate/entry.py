@@ -528,6 +528,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     # Initialize logging variables early
     create_log = False
     file_path = None
+    progress_bar = None  # Initialize progress bar variable
 
     def write_log_entry(entry):
         """Helper function to write entries to the log file if logging is enabled"""
@@ -673,12 +674,40 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     fh.write("\n\nDocument save log:\n")
             except Exception as log_e:
                 futil.log(f"Failed to write initial log: {log_e}")
+
+        # Initialize progress bar for document processing
+        progress_bar = ui.createProgressDialog()
+        progress_bar.cancelButtonText = "Cancel"
+        progress_bar.isBackgroundTranslucent = False
+        progress_bar.isCancelButtonShown = True
+        progress_bar.maximumValue = docCount
+        progress_bar.minimumValue = 0
+        progress_bar.progressValue = 0
+        progress_bar.show(
+            "Bottom-up Update Progress",
+            "Preparing to update components...",
+            0,
+            docCount,
+            1,
+        )
+
+        # Counter for progress tracking
+        processed_count = 0
+
         # Process each component in bottom-up dependency order
         for component_name in bottom_up_order:
             if component_name == "RootComponent":  # Skip the root assembly itself
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = (
+                    f"Skipping root component ({processed_count} of {docCount})"
+                )
                 continue
             component = design.allComponents.itemByName(component_name)
             if not component:  # Component not found, skip it
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = f"Component not found: {component_name} ({processed_count} of {docCount})"
                 continue
             # Get the design data file for this component
             design_data_file = getattr(
@@ -688,6 +717,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 log_entry = f"Skipping Component (no designDataFile): {component_name}"
                 futil.log(log_entry)
                 write_log_entry(log_entry)
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = f"Skipping {component_name} (no design file) ({processed_count} of {docCount})"
                 continue
             docid = design_data_file.id
             parent_project = None
@@ -704,28 +736,71 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 log_entry = f"Skipping standard component: {component_name}"
                 futil.log(log_entry)
                 write_log_entry(log_entry)
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = f"Skipping standard component: {component_name} ({processed_count} of {docCount})"
+                continue
 
             # Skip already saved components if option is enabled
             if skip_saved and app.activeDocument.version == app.version:
                 log_entry = f"Skipping already saved component: {component_name}"
                 futil.log(log_entry)
                 write_log_entry(log_entry)
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = f"Skipping already saved: {component_name} ({processed_count} of {docCount})"
                 continue
 
             # Skip if we've already processed this document ID
             if docid in saved:
+                processed_count += 1
+                progress_bar.progressValue = processed_count
+                progress_bar.message = f"Skipping already processed: {component_name} ({processed_count} of {docCount})"
                 continue
             saved.add(docid)  # Mark this document as processed
 
+            # Update progress bar before opening document
+            processed_count += 1
+            progress_bar.progressValue = processed_count
+            progress_bar.message = (
+                f"Updating component {processed_count} of {docCount}: {component_name}"
+            )
+
             # Open the component's document for editing
-            document = app.data.findFileById(docid)
-            app.documents.open(document, True)
-            # Log the document open event
-            futil.log(f"Opened component: {component_name}")
-            write_log_entry(f"Opened component: {component_name}")
+            try:
+                document = app.data.findFileById(docid)
+                if not document:
+                    error_msg = (
+                        f"Could not find document for component: {component_name}"
+                    )
+                    futil.log(error_msg)
+                    write_log_entry(error_msg)
+                    progress_bar.message = f"Failed to find document: {component_name} ({processed_count} of {docCount})"
+                    continue
+
+                app.documents.open(document, True)
+                # Log the document open event
+                futil.log(f"Opened component: {component_name}")
+                write_log_entry(f"Opened component: {component_name}")
+            except Exception as open_error:
+                error_msg = (
+                    f"Failed to open document for {component_name}: {str(open_error)}"
+                )
+                futil.log(error_msg)
+                write_log_entry(error_msg)
+                progress_bar.message = f"Failed to open document: {component_name} ({processed_count} of {docCount})"
+                continue  # Skip this component and move to the next one
             # Update all references in the newly opened document
             opened_doc = app.activeDocument
-            opened_doc.updateAllReferences()
+            try:
+                opened_doc.updateAllReferences()
+                futil.log(f"Updated references for component: {component_name}")
+                write_log_entry(f"Updated references for component: {component_name}")
+            except RuntimeError as ref_error:
+                error_msg = f"Failed to update references for {component_name}: {str(ref_error)}"
+                futil.log(error_msg)
+                write_log_entry(error_msg)
+                # Continue processing despite reference update failure
 
             # Ensure we're in the correct workspace for operations
             workspace = ui.workspaces.itemById("FusionSolidEnvironment")
@@ -903,6 +978,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
         futil.log(f"----- Components saved -----")
         write_log_entry(f"----- Components saved -----")
 
+        # Update progress bar for final steps
+        progress_bar.message = "Getting latest versions of all components..."
+
         # Execute Fusion commands to get latest versions and update references
         futil.log("Executing GetAllLatestCmd...")
         write_log_entry("Executing GetAllLatestCmd...")
@@ -913,6 +991,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
         futil.log("Executing ContextUpdateAllFromParentCmd...")
         write_log_entry("Executing ContextUpdateAllFromParentCmd...")
+        progress_bar.message = "Updating all references from parent..."
         cmdUpdate = cmdDefs.itemById(
             "ContextUpdateAllFromParentCmd"
         )  # Update all from parent
@@ -921,11 +1000,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
             time.sleep(0.1)  # Optional: Add a small delay to observe the update
 
         # Save the active document after updating references
+        progress_bar.message = "Saving main assembly document..."
         futil.log("Saving active document after updating references...")
         write_log_entry("Saving active document after updating references...")
         app.activeDocument.save(
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
         )
+
+        # Hide the progress bar
+        progress_bar.hide()
 
         # Prepare completion message and finalize logging
         completion_msg = "Bottom-up Update complete."
@@ -960,6 +1043,13 @@ def command_execute(args: adsk.core.CommandEventArgs):
         write_log_entry("Bottom-up Update completed successfully")
         ui.messageBox(completion_msg)  # Show completion message to user
     except Exception as e:
+        # Hide progress bar if it exists
+        try:
+            if progress_bar:
+                progress_bar.hide()
+        except:
+            pass  # Ignore any errors hiding the progress bar
+
         # Clear global variables even on failure to ensure clean state for next run
         saved.clear()
         product = None
