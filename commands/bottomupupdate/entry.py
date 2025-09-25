@@ -40,6 +40,7 @@ HIDE_SKETCHES_ID = "hide_sketches"  # Checkbox to hide component sketches
 HIDE_JOINTORIGINS_ID = "hide_jointorigins"  # Checkbox to hide joint origin markers
 HIDE_CANVASES_ID = "hide_canvases"  # Checkbox to hide canvases
 APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent before saving
+PAUSE_TIME_ID = "pause_time"  # Text input for configurable pause time in seconds
 LOG_ENABLE_ID = "enable_log"  # Checkbox to enable progress logging
 LOG_PATH_ID = "log_path"  # Text input for custom log file path
 LOG_BROWSE_ID = "browse_log"  # Button to browse for log file location
@@ -165,6 +166,14 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", False
     )
     apply_intent_input.tooltip = "Applies design intent (Part, Assembly, or Hybrid) to the document's root component."
+
+    # Add pause time input
+    pause_time_input = main_inputs.addStringValueInput(
+        PAUSE_TIME_ID, "Pause after save (seconds)", "4"
+    )
+    pause_time_input.tooltip = (
+        "Time to pause after saving each document (in seconds). Set to 0 for no pause."
+    )
 
     # Visualization tab
     vis_tab = inputs.addTabCommandInput("visTab", "Visibility")
@@ -569,6 +578,29 @@ def command_execute(args: adsk.core.CommandEventArgs):
             inputs.itemById(HIDE_CANVASES_ID)
         ).value
 
+        # Read and validate pause time
+        pause_time_input = inputs.itemById(PAUSE_TIME_ID)
+        if pause_time_input:
+            pause_time_str = adsk.core.StringValueCommandInput.cast(
+                pause_time_input
+            ).value
+            try:
+                pause_time = float(pause_time_str)
+                if pause_time < 0:
+                    pause_time = 0  # Ensure no negative values
+            except (ValueError, TypeError):
+                pause_time = 4.0  # Default to 4 seconds if invalid input
+                futil.log(
+                    f"Invalid pause time '{pause_time_str}', using default 4 seconds"
+                )
+                write_log_entry(
+                    f"Invalid pause time '{pause_time_str}', using default 4 seconds"
+                )
+        else:
+            pause_time = 4.0  # Default if input not found
+            futil.log(f"Pause time input not found, using default 4 seconds")
+            write_log_entry(f"Pause time input not found, using default 4 seconds")
+
         # Initialize logging variables
         saved_doc_count = 0  # Track how many documents were actually saved
 
@@ -634,6 +666,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     fh.write(f"  Rebuild all: {rebuild_all}\n")
                     fh.write(f"  Create log file: {create_log}\n")
                     fh.write(f"  Skip standard components: {skip_standard}\n")
+                    fh.write(f"  Pause time after save: {pause_time} seconds\n")
                     fh.write(f"  Log file path: {file_path}\n")
                     fh.write("\nBottom-up order:\n")
                     fh.write("\n".join(bottom_up_order))
@@ -851,6 +884,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
             futil.log(log_entry)
             write_log_entry(log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
+
+            # Add configurable pause after saving
+            if pause_time > 0:
+                futil.log(f"   Pausing for {pause_time} seconds...")
+                write_log_entry(f"   Pausing for {pause_time} seconds...")
+                time.sleep(pause_time)
 
             # Add progress separator
             progress_msg = (
