@@ -108,6 +108,13 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
         design = app.activeProduct
         doc = app.activeDocument
 
+        # are we offline?
+        if app.isOffLine:
+            ui.messageBox(
+                "You are currently offline. Please connect to the internet and try again."
+            )
+            return
+
         if not design:
             ui.messageBox("No active Fusion design")
             return
