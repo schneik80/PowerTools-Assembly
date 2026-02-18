@@ -13,20 +13,22 @@ IS_PROMOTED = False
 
 # Place insert STEP in the Assembly, Insert tab of the Fusion UI.
 WORKSPACE_ID = "FusionSolidEnvironment"
-# Check if the assembly tab exists in FusionSolidEnvironment
-ASSYtbID = "AssemblyTab"
-workspace = ui.workspaces.itemById(WORKSPACE_ID)
-if workspace.toolbarTabs.itemById(ASSYtbID):
-    TAB_ID = "AssemblyTab"
-    TAB_NAME = "ASSEMBLY"
-    PANEL_ID = "AssemblyAssemblePanel"
-    PANEL_NAME = "Assemble"
-else:
-    # If not, use the default tab for the FusionSolidEnvironment
-    TAB_ID = "SolidTab"
-    TAB_NAME = "SOLID"
-    PANEL_ID = "InsertPanel"
-    PANEL_NAME = "Insert"
+
+# Define both tabs where the command will appear
+TABS = [
+    {
+        "TAB_ID": "AssemblyTab",
+        "TAB_NAME": "ASSEMBLY",
+        "PANEL_ID": "InsertAssemblePanel",
+        "PANEL_NAME": "INSERT",
+    },
+    {
+        "TAB_ID": "SolidTab",
+        "TAB_NAME": "SOLID",
+        "PANEL_ID": "InsertPanel",
+        "PANEL_NAME": "Insert",
+    },
+]
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
@@ -50,47 +52,46 @@ def start():
     # Get target workspace for the command.
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
 
-    # Get target toolbar tab for the command and create the tab if necessary.
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
+    # Add the command to each tab/panel.
+    for tab_info in TABS:
+        toolbar_tab = workspace.toolbarTabs.itemById(tab_info["TAB_ID"])
+        if toolbar_tab is None:
+            toolbar_tab = workspace.toolbarTabs.add(
+                tab_info["TAB_ID"], tab_info["TAB_NAME"]
+            )
 
-    # Get target panel for the command and and create the panel if necessary.
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME)
+        panel = toolbar_tab.toolbarPanels.itemById(tab_info["PANEL_ID"])
+        if panel is None:
+            panel = toolbar_tab.toolbarPanels.add(
+                tab_info["PANEL_ID"], tab_info["PANEL_NAME"]
+            )
 
-    # Create the command control, i.e. a button in the UI.
-    control = panel.controls.addCommand(cmd_def, "PT-assemblystats", True)
-
-    # Now you can set various options on the control such as promoting it to always be shown.
-    control.isPromoted = IS_PROMOTED
+        control = panel.controls.addCommand(cmd_def, "PT-assemblystats", True)
+        control.isPromoted = IS_PROMOTED
 
 
 # Executed when add-in is stopped.
 def stop():
-    # Get the various UI elements for this command
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(PANEL_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    command_control = panel.controls.itemById(CMD_ID)
+
+    for tab_info in TABS:
+        panel = workspace.toolbarPanels.itemById(tab_info["PANEL_ID"])
+        toolbar_tab = workspace.toolbarTabs.itemById(tab_info["TAB_ID"])
+
+        if panel:
+            command_control = panel.controls.itemById(CMD_ID)
+            if command_control:
+                command_control.deleteMe()
+
+            if panel.controls.count == 0:
+                panel.deleteMe()
+
+        if toolbar_tab and toolbar_tab.toolbarPanels.count == 0:
+            toolbar_tab.deleteMe()
+
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
-
-    # Delete the button command control
-    if command_control:
-        command_control.deleteMe()
-
-    # Delete the command definition
     if command_definition:
         command_definition.deleteMe()
-
-    # Delete the panel if it is empty
-    if panel.controls.count == 0:
-        panel.deleteMe()
-
-    # Delete the tab if it is empty
-    if toolbar_tab.toolbarPanels.count == 0:
-        toolbar_tab.deleteMe()
 
 
 # Function to be called when a user clicks the corresponding button in the UI.
