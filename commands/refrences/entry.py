@@ -1,5 +1,5 @@
 import adsk.core, adsk.fusion
-import html, os, traceback, webbrowser
+import html, os, subprocess, traceback
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -34,38 +34,20 @@ _browser_btns: dict = {}
 
 # Executed when add-in is run.
 def start():
-    try:
-        # Clean up any stale definitions/controls from a previous load
-        workspace = ui.workspaces.itemById(WORKSPACE_ID)
-        toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-        if toolbar_tab is None:
-            toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-        panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-        if panel is None:
-            panel = toolbar_tab.toolbarPanels.add(
-                PANEL_ID, PANEL_NAME, PANEL_AFTER, False
-            )
-        stale_control = panel.controls.itemById(CMD_ID)
-        if stale_control:
-            stale_control.deleteMe()
+    cmd_def = ui.commandDefinitions.addButtonDefinition(
+        CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
+    )
+    futil.add_handler(cmd_def.commandCreated, command_created)
 
-        cmd_def = ui.commandDefinitions.itemById(CMD_ID)
-        if cmd_def is None:
-            cmd_def = ui.commandDefinitions.addButtonDefinition(
-                CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
-            )
-        futil.add_handler(cmd_def.commandCreated, command_created)
-
-        control = panel.controls.addCommand(cmd_def)
-        control.isPromoted = IS_PROMOTED
-    except:
-        try:
-            ui.messageBox(f"{CMD_NAME} start() failed:\n{traceback.format_exc()}")
-        except Exception:
-            futil.log(
-                f"{CMD_NAME} start() failed:\n{traceback.format_exc()}",
-                adsk.core.LogLevels.ErrorLogLevel,
-            )
+    workspace = ui.workspaces.itemById(WORKSPACE_ID)
+    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
+    if toolbar_tab is None:
+        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
+    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
+    if panel is None:
+        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
+    control = panel.controls.addCommand(cmd_def)
+    control.isPromoted = IS_PROMOTED
 
 
 # Executed when add-in is stopped.
@@ -105,7 +87,6 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     _fusion_btns = {}
     _browser_btns = {}
 
-    ui = None
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
@@ -129,13 +110,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         childDataFiles = doc.designDataFile.childReferences
         subString = " ‹+› "
 
-        docParents, docChildren, docDrawings, docRelated, docFasteners = (
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        docParents, docChildren, docDrawings, docRelated, docFasteners = [], [], [], [], []
 
         progressBar = ui.progressBar
         progressBar.showBusy("Getting Document References…", True)
@@ -144,9 +119,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         def make_file_data(file):
             url = None
             try:
-                url = file.fusionWebURL
+                candidate = file.fusionWebURL
+                if candidate:
+                    url = candidate
             except Exception:
-                url = None
+                pass
             return {"name": file.name, "id": file.id, "url": url, "file": file}
 
         for file in parentDataFiles or []:
@@ -193,22 +170,8 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
             table.maximumVisibleRows = 8
             table.columnSpacing = 2
 
-            # Header row
-            h_name = grp.addTextBoxCommandInput(
-                f"{prefix}_h_name", "", "<b>Document</b>", 1, True
-            )
-            h_open = grp.addTextBoxCommandInput(
-                f"{prefix}_h_open", "", "<b>Open</b>", 1, True
-            )
-            h_web = grp.addTextBoxCommandInput(
-                f"{prefix}_h_web", "", "<b>Web Open</b>", 1, True
-            )
-            table.addCommandInput(h_name, 0, 0)
-            table.addCommandInput(h_open, 0, 1)
-            table.addCommandInput(h_web, 0, 2)
-
             for i, item in enumerate(items):
-                row = i + 1
+                row = i
 
                 name_in = grp.addTextBoxCommandInput(
                     f"{prefix}_name_{i}", "", html.escape(item["name"]), 1, True
@@ -252,12 +215,18 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
 
 def on_input_changed(args: adsk.core.InputChangedEventArgs):
-    btn_id = args.input.id
+    btn = args.input
+    btn_id = btn.id
+
+    # BoolValueInput fires on both press (True) and release (False) — only act on press.
+    if hasattr(btn, "value") and not btn.value:
+        return
 
     if btn_id in _fusion_btns:
         data_file = _fusion_btns[btn_id]
         try:
             app.documents.open(data_file)
+            args.input.parentCommand.doExecute(False)
         except Exception:
             ui.messageBox(
                 "Failed to open document in Fusion:\n{}".format(traceback.format_exc())
@@ -266,7 +235,10 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
     elif btn_id in _browser_btns:
         url = _browser_btns[btn_id]
         try:
-            webbrowser.open(url)
+            if os.name == "nt":
+                subprocess.Popen(["start", url], shell=True)
+            else:
+                subprocess.Popen(["open", url])
         except Exception:
             ui.messageBox("Failed to open URL:\n{}".format(traceback.format_exc()))
 
