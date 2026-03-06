@@ -34,20 +34,38 @@ _browser_btns: dict = {}
 
 # Executed when add-in is run.
 def start():
-    cmd_def = ui.commandDefinitions.addButtonDefinition(
-        CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
-    )
-    futil.add_handler(cmd_def.commandCreated, command_created)
+    try:
+        # Clean up any stale definitions/controls from a previous load
+        workspace = ui.workspaces.itemById(WORKSPACE_ID)
+        toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
+        if toolbar_tab is None:
+            toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
+        panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
+        if panel is None:
+            panel = toolbar_tab.toolbarPanels.add(
+                PANEL_ID, PANEL_NAME, PANEL_AFTER, False
+            )
+        stale_control = panel.controls.itemById(CMD_ID)
+        if stale_control:
+            stale_control.deleteMe()
 
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
-    control = panel.controls.addCommand(cmd_def)
-    control.isPromoted = IS_PROMOTED
+        cmd_def = ui.commandDefinitions.itemById(CMD_ID)
+        if cmd_def is None:
+            cmd_def = ui.commandDefinitions.addButtonDefinition(
+                CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
+            )
+        futil.add_handler(cmd_def.commandCreated, command_created)
+
+        control = panel.controls.addCommand(cmd_def)
+        control.isPromoted = IS_PROMOTED
+    except:
+        try:
+            ui.messageBox(f"{CMD_NAME} start() failed:\n{traceback.format_exc()}")
+        except Exception:
+            futil.log(
+                f"{CMD_NAME} start() failed:\n{traceback.format_exc()}",
+                adsk.core.LogLevels.ErrorLogLevel,
+            )
 
 
 # Executed when add-in is stopped.
@@ -111,7 +129,13 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         childDataFiles = doc.designDataFile.childReferences
         subString = " ‹+› "
 
-        docParents, docChildren, docDrawings, docRelated, docFasteners = [], [], [], [], []
+        docParents, docChildren, docDrawings, docRelated, docFasteners = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         progressBar = ui.progressBar
         progressBar.showBusy("Getting Document References…", True)
@@ -125,7 +149,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                 url = None
             return {"name": file.name, "id": file.id, "url": url, "file": file}
 
-        for file in (parentDataFiles or []):
+        for file in parentDataFiles or []:
             fd = make_file_data(file)
             if subString in file.name:
                 docRelated.append(fd)
@@ -134,7 +158,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
             else:
                 docParents.append(fd)
 
-        for file in (childDataFiles or []):
+        for file in childDataFiles or []:
             fd = make_file_data(file)
             try:
                 if file.parentProject.name == "Standard Components":
@@ -153,71 +177,74 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         inputs = cmd.commandInputs
 
         def _add_table(title, items, prefix):
-            inputs.addTextBoxCommandInput(
-                f"{prefix}_heading", "",
-                f"<b>{title}</b>  ({len(items)})",
-                1, True
+            group = inputs.addGroupCommandInput(
+                f"{prefix}_group", f"{title}  ({len(items)})"
             )
+            group.isExpanded = bool(items)
+            group.isEnabledCheckBoxDisplayed = False
 
             if not items:
-                inputs.addTextBoxCommandInput(
-                    f"{prefix}_empty", "", "  <i>None</i>", 1, True
-                )
                 return
 
-            table = inputs.addTableCommandInput(
-                f"{prefix}_table", title, 3, "6:1:1"
-            )
+            grp = group.children
+
+            table = grp.addTableCommandInput(f"{prefix}_table", title, 3, "6:1:1")
             table.minimumVisibleRows = 1
             table.maximumVisibleRows = 8
             table.columnSpacing = 2
 
             # Header row
-            h_name = inputs.addTextBoxCommandInput(f"{prefix}_h_name", "", "<b>Document</b>", 1, True)
-            h_open = inputs.addTextBoxCommandInput(f"{prefix}_h_open", "", "<b>Fusion</b>", 1, True)
-            h_web  = inputs.addTextBoxCommandInput(f"{prefix}_h_web",  "", "<b>Web</b>",    1, True)
+            h_name = grp.addTextBoxCommandInput(
+                f"{prefix}_h_name", "", "<b>Document</b>", 1, True
+            )
+            h_open = grp.addTextBoxCommandInput(
+                f"{prefix}_h_open", "", "<b>Open</b>", 1, True
+            )
+            h_web = grp.addTextBoxCommandInput(
+                f"{prefix}_h_web", "", "<b>Web Open</b>", 1, True
+            )
             table.addCommandInput(h_name, 0, 0)
             table.addCommandInput(h_open, 0, 1)
-            table.addCommandInput(h_web,  0, 2)
+            table.addCommandInput(h_web, 0, 2)
 
             for i, item in enumerate(items):
                 row = i + 1
 
-                name_in = inputs.addTextBoxCommandInput(
+                name_in = grp.addTextBoxCommandInput(
                     f"{prefix}_name_{i}", "", html.escape(item["name"]), 1, True
                 )
 
                 if item.get("file"):
-                    open_btn = inputs.addBoolValueInput(
-                        f"{prefix}_open_{i}", "Open", False, "", False
+                    open_btn = grp.addBoolValueInput(
+                        f"{prefix}_open_{i}", "⧉", False, "", False
                     )
                     open_btn.tooltip = "Open this document in Fusion"
                     _fusion_btns[f"{prefix}_open_{i}"] = item["file"]
                 else:
-                    open_btn = inputs.addTextBoxCommandInput(
+                    open_btn = grp.addTextBoxCommandInput(
                         f"{prefix}_nopen_{i}", "", "–", 1, True
                     )
 
                 if item.get("url"):
-                    web_btn = inputs.addBoolValueInput(
-                        f"{prefix}_web_{i}", "Web", False, "", False
+                    web_btn = grp.addBoolValueInput(
+                        f"{prefix}_web_{i}", "↗", False, "", False
                     )
                     web_btn.tooltip = "Open in web browser"
                     _browser_btns[f"{prefix}_web_{i}"] = item["url"]
                 else:
-                    web_btn = inputs.addTextBoxCommandInput(
+                    web_btn = grp.addTextBoxCommandInput(
                         f"{prefix}_nweb_{i}", "", "–", 1, True
                     )
 
-                table.addCommandInput(name_in,  row, 0)
+                table.addCommandInput(name_in, row, 0)
                 table.addCommandInput(open_btn, row, 1)
-                table.addCommandInput(web_btn,  row, 2)
+                table.addCommandInput(web_btn, row, 2)
 
-        _add_table("Used In (Parents)",  docParents,  "parents")
-        _add_table("Uses (Children)",    docChildren, "children")
-        _add_table("Drawings",           docDrawings, "drawings")
-        _add_table("Fasteners",          docFasteners,"fasteners")
-        _add_table("Related Data",       docRelated,  "related")
+        _add_table("Used In (Parents)", docParents, "parents")
+        _add_table("Uses (Children)", docChildren, "children")
+        _add_table("Drawings", docDrawings, "drawings")
+        _add_table("Fasteners", docFasteners, "fasteners")
+        _add_table("Related Data", docRelated, "related")
 
     except Exception:
         if ui:
@@ -232,7 +259,9 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
         try:
             app.documents.open(data_file)
         except Exception:
-            ui.messageBox("Failed to open document in Fusion:\n{}".format(traceback.format_exc()))
+            ui.messageBox(
+                "Failed to open document in Fusion:\n{}".format(traceback.format_exc())
+            )
 
     elif btn_id in _browser_btns:
         url = _browser_btns[btn_id]
