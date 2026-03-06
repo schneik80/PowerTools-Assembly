@@ -22,6 +22,8 @@ PANEL_AFTER = config.my_panel_after
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+OPEN_ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "open", "")
+WEB_ICON_FOLDER  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "web", "")
 
 # Local list of event handlers used to maintain a reference so
 # they are not released and garbage collected.
@@ -179,7 +181,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
                 if item.get("file"):
                     open_btn = grp.addBoolValueInput(
-                        f"{prefix}_open_{i}", "⧉", False, "", False
+                        f"{prefix}_open_{i}", "", False, OPEN_ICON_FOLDER, False
                     )
                     open_btn.tooltip = "Open this document in Fusion"
                     _fusion_btns[f"{prefix}_open_{i}"] = item["file"]
@@ -190,7 +192,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
                 if item.get("url"):
                     web_btn = grp.addBoolValueInput(
-                        f"{prefix}_web_{i}", "↗", False, "", False
+                        f"{prefix}_web_{i}", "", False, WEB_ICON_FOLDER, False
                     )
                     web_btn.tooltip = "Open in web browser"
                     _browser_btns[f"{prefix}_web_{i}"] = item["url"]
