@@ -1,5 +1,5 @@
 import adsk.core, adsk.fusion
-import html, os, traceback
+import html, os, traceback, webbrowser
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -27,88 +27,73 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource
 # they are not released and garbage collected.
 local_handlers = []
 
+# Maps button input IDs → DataFile object or URL, populated on each invocation.
+_fusion_btns: dict = {}
+_browser_btns: dict = {}
+
 
 # Executed when add-in is run.
 def start():
-    # ******************************** Create Command Definition ********************************
     cmd_def = ui.commandDefinitions.addButtonDefinition(
         CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
     )
-
-    # Define an event handler for the command created event. It will be called when the button is clicked.
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    # ******************************** Create Command Control ********************************
-    # Get target workspace for the command.
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
-
-    # Get target toolbar tab for the command and create the tab if necessary.
     toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
     if toolbar_tab is None:
         toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-
-    # Get target panel for the command and and create the panel if necessary.
     panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
     if panel is None:
         panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
-
-    # Create the command control, i.e. a button in the UI.
     control = panel.controls.addCommand(cmd_def)
-
-    # Now you can set various options on the control such as promoting it to always be shown.
     control.isPromoted = IS_PROMOTED
 
 
 # Executed when add-in is stopped.
 def stop():
-    # Get the various UI elements for this command
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
     panel = workspace.toolbarPanels.itemById(PANEL_ID)
     toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
     command_control = panel.controls.itemById(CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
 
-    # Delete the button command control
     if command_control:
         command_control.deleteMe()
-
-    # Delete the command definition
     if command_definition:
         command_definition.deleteMe()
-
-    # Delete the panel if it is empty
     if panel.controls.count == 0:
         panel.deleteMe()
-
-    # Delete the tab if it is empty
     if toolbar_tab.toolbarPanels.count == 0:
         toolbar_tab.deleteMe()
 
 
 # Function that is called when a user clicks the corresponding button in the UI.
-# This defines the contents of the command dialog and connects to the command related events.
+# Collects references, then builds the command dialog with five tables.
 def command_created(args: adsk.core.CommandCreatedEventArgs):
     futil.log(f"{CMD_NAME} Command Created Event")
 
-    # Connect to the events that are needed by this command.
     futil.add_handler(
         args.command.execute, command_execute, local_handlers=local_handlers
+    )
+    futil.add_handler(
+        args.command.inputChanged, on_input_changed, local_handlers=local_handlers
     )
     futil.add_handler(
         args.command.destroy, command_destroy, local_handlers=local_handlers
     )
 
+    global _fusion_btns, _browser_btns
+    _fusion_btns = {}
+    _browser_btns = {}
 
-def command_execute(args: adsk.core.CommandCreatedEventArgs):
-    # this handles the document close and reopen
     ui = None
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
-        design = app.activeProduct
         doc = app.activeDocument
+        design = app.activeProduct
 
-        # are we offline?
         if app.isOffLine:
             ui.messageBox(
                 "You are currently offline. Please connect to the internet and try again."
@@ -119,144 +104,153 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             ui.messageBox("No active Fusion design")
             return
 
-        # Check that the active document has been saved.
-        if futil.isSaved() == False:
+        if not futil.isSaved():
             return
 
         parentDataFiles = doc.designDataFile.parentReferences
         childDataFiles = doc.designDataFile.childReferences
-        totalRefs = parentDataFiles.count + childDataFiles.count
-        docParents = []
-        docChildren = []
-        docDrawings = []
-        docRelated = []
-        docFasteners = []
         subString = " ‹+› "
-        linkError = False
+
+        docParents, docChildren, docDrawings, docRelated, docFasteners = [], [], [], [], []
 
         progressBar = ui.progressBar
-        progressBar.showBusy("Getting Document's References Link", True)
+        progressBar.showBusy("Getting Document References…", True)
         adsk.doEvents
 
-        # Create file_data dictionary template
         def make_file_data(file):
             url = None
             try:
                 url = file.fusionWebURL
-            except:
+            except Exception:
                 url = None
-            return {"name": file.name, "id": file.id, "url": url}
+            return {"name": file.name, "id": file.id, "url": url, "file": file}
 
-        # Process parent and related data files in one pass
-        if parentDataFiles:
-            for file in parentDataFiles:
+        for file in (parentDataFiles or []):
+            fd = make_file_data(file)
+            if subString in file.name:
+                docRelated.append(fd)
+            elif file.fileExtension == "f2d":
+                docDrawings.append(fd)
+            else:
+                docParents.append(fd)
 
-                file_data = make_file_data(file)
-                if subString in file.name:
-                    docRelated.append(file_data)
-                elif file.fileExtension == "f2d":
-                    docDrawings.append(file_data)
+        for file in (childDataFiles or []):
+            fd = make_file_data(file)
+            try:
+                if file.parentProject.name == "Standard Components":
+                    docFasteners.append(fd)
                 else:
-                    docParents.append(file_data)
+                    if hasattr(file, "isConfiguration") and file.isConfiguration:
+                        fd["name"] += " (configuration)"
+                    docChildren.append(fd)
+            except Exception:
+                docChildren.append(fd)
 
-        # Process child data files in one pass
-        if childDataFiles:
-            for file in childDataFiles:
-
-                file_data = make_file_data(file)
-                try:
-                    if file.parentProject.name == "Standard Components":
-                        docFasteners.append(file_data)
-                    else:
-                        # Check if this is a configuration
-                        if hasattr(file, "isConfiguration") and file.isConfiguration:
-                            file_data["name"] += " (configuration)"
-                        docChildren.append(file_data)
-                except:
-                    # If parentProject is not accessible, treat as regular child
-                    # Still check for configuration status
-                    try:
-                        if hasattr(file, "isConfiguration") and file.isConfiguration:
-                            file_data["name"] += " (configuration)"
-                    except:
-                        pass
-                    docChildren.append(file_data)
-
-        # Links String to report references
-        links = f""
-
-        if docParents:
-            links += f"<h3>Parents ({len(docParents)}):</h3>"
-            for item in docParents:
-                if item["url"]:
-                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
-                else:
-                    links += f'{item["name"]}<br>'
-                    linkError = True
-
-        if docChildren:
-            links += f"<h3>Children ({len(docChildren)}):</h3>"
-            for item in docChildren:
-                if item["url"]:
-                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
-                else:
-                    links += f'{item["name"]}<br>'
-                    linkError = True
-
-        if docDrawings:
-            links += f"<h3>Drawings ({len(docDrawings)}):</h3>"
-            for item in docDrawings:
-                if item["url"]:
-                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
-                else:
-                    links += f'{item["name"]}<br>'
-                    linkError = True
-
-        if docRelated:
-            links += f"<h3>Related Data ({len(docRelated)}):</h3>"
-            for item in docRelated:
-                if item["url"]:
-                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
-                else:
-                    links += f'{item["name"]}<br>'
-                    linkError = True
-
-        if docFasteners:
-            links += f"<h3>Fasteners ({len(docFasteners)}):</h3>"
-            for item in docFasteners:
-                if item["url"]:
-                    links += f'<a href="{item["url"]}">{item["name"]}</a><br>'
-                else:
-                    links += f'{item["name"]}<br>'
-                    linkError = True
-
-        # Hide the progress bar
         progressBar.hide()
 
-        if linkError == True:
-            links += f"<br><b>Note:</b> Some links may not be accessible due to permissions or other issues.<br>"
-            # If no relationships found, show a message box
-        if totalRefs == 0:
-            ui.messageBox(
-                "Document's current version has no references",
-                f"{doc.name}",
-                0,
-                2,
+        cmd = args.command
+        cmd.okButtonText = "Close"
+        inputs = cmd.commandInputs
+
+        def _add_table(title, items, prefix):
+            inputs.addTextBoxCommandInput(
+                f"{prefix}_heading", "",
+                f"<b>{title}</b>  ({len(items)})",
+                1, True
             )
 
-        # If relationships found, show a message box with the links
-        else:
-            relationsTitle = f"References {totalRefs} "
+            if not items:
+                inputs.addTextBoxCommandInput(
+                    f"{prefix}_empty", "", "  <i>None</i>", 1, True
+                )
+                return
 
-            ui.messageBox(links, f"{doc.name} - {relationsTitle}", 0, 2)
+            table = inputs.addTableCommandInput(
+                f"{prefix}_table", title, 3, "6:1:1"
+            )
+            table.minimumVisibleRows = 1
+            table.maximumVisibleRows = 8
+            table.columnSpacing = 2
 
-    except:
+            # Header row
+            h_name = inputs.addTextBoxCommandInput(f"{prefix}_h_name", "", "<b>Document</b>", 1, True)
+            h_open = inputs.addTextBoxCommandInput(f"{prefix}_h_open", "", "<b>Fusion</b>", 1, True)
+            h_web  = inputs.addTextBoxCommandInput(f"{prefix}_h_web",  "", "<b>Web</b>",    1, True)
+            table.addCommandInput(h_name, 0, 0)
+            table.addCommandInput(h_open, 0, 1)
+            table.addCommandInput(h_web,  0, 2)
+
+            for i, item in enumerate(items):
+                row = i + 1
+
+                name_in = inputs.addTextBoxCommandInput(
+                    f"{prefix}_name_{i}", "", html.escape(item["name"]), 1, True
+                )
+
+                if item.get("file"):
+                    open_btn = inputs.addBoolValueInput(
+                        f"{prefix}_open_{i}", "Open", False, "", False
+                    )
+                    open_btn.tooltip = "Open this document in Fusion"
+                    _fusion_btns[f"{prefix}_open_{i}"] = item["file"]
+                else:
+                    open_btn = inputs.addTextBoxCommandInput(
+                        f"{prefix}_nopen_{i}", "", "–", 1, True
+                    )
+
+                if item.get("url"):
+                    web_btn = inputs.addBoolValueInput(
+                        f"{prefix}_web_{i}", "Web", False, "", False
+                    )
+                    web_btn.tooltip = "Open in web browser"
+                    _browser_btns[f"{prefix}_web_{i}"] = item["url"]
+                else:
+                    web_btn = inputs.addTextBoxCommandInput(
+                        f"{prefix}_nweb_{i}", "", "–", 1, True
+                    )
+
+                table.addCommandInput(name_in,  row, 0)
+                table.addCommandInput(open_btn, row, 1)
+                table.addCommandInput(web_btn,  row, 2)
+
+        _add_table("Used In (Parents)",  docParents,  "parents")
+        _add_table("Uses (Children)",    docChildren, "children")
+        _add_table("Drawings",           docDrawings, "drawings")
+        _add_table("Fasteners",          docFasteners,"fasteners")
+        _add_table("Related Data",       docRelated,  "related")
+
+    except Exception:
         if ui:
             ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
 
 
+def on_input_changed(args: adsk.core.InputChangedEventArgs):
+    btn_id = args.input.id
+
+    if btn_id in _fusion_btns:
+        data_file = _fusion_btns[btn_id]
+        try:
+            app.documents.open(data_file)
+        except Exception:
+            ui.messageBox("Failed to open document in Fusion:\n{}".format(traceback.format_exc()))
+
+    elif btn_id in _browser_btns:
+        url = _browser_btns[btn_id]
+        try:
+            webbrowser.open(url)
+        except Exception:
+            ui.messageBox("Failed to open URL:\n{}".format(traceback.format_exc()))
+
+
+# Called when the user clicks OK / Close — no action needed for a read-only dialog.
+def command_execute(args: adsk.core.CommandEventArgs):
+    futil.log(f"{CMD_NAME} Command Execute Event")
+
+
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
-    global local_handlers
+    global local_handlers, _fusion_btns, _browser_btns
     local_handlers = []
+    _fusion_btns = {}
+    _browser_btns = {}
     futil.log(f"{CMD_NAME} Command Destroy Event")
