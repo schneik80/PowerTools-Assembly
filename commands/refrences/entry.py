@@ -1,5 +1,5 @@
 import adsk.core, adsk.fusion
-import html, os, subprocess, traceback
+import html, os, subprocess, tempfile, time, traceback, uuid
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -21,9 +21,15 @@ PANEL_NAME = config.my_panel_name
 PANEL_AFTER = config.my_panel_after
 
 # Resource location for command icons, here we assume a sub folder in this directory named "resources".
-ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
-OPEN_ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "open", "")
-WEB_ICON_FOLDER  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "web", "")
+_res = os.path.dirname(os.path.abspath(__file__))
+ICON_FOLDER = os.path.join(_res, "resources", "")
+OPEN_ICON_FOLDER = os.path.join(_res, "resources", "open", "")
+WEB_ICON_FOLDER = os.path.join(_res, "resources", "web", "")
+THUMB_PLACEHOLDER = os.path.join(_res, "resources", "doc_thumb.png")
+
+# Temp directory for downloaded thumbnails — one subdir per session.
+THUMB_DIR = os.path.join(tempfile.gettempdir(), "PTAT_thumbs")
+os.makedirs(THUMB_DIR, exist_ok=True)
 
 # Local list of event handlers used to maintain a reference so
 # they are not released and garbage collected.
@@ -32,6 +38,10 @@ local_handlers = []
 # Maps button input IDs → DataFile object or URL, populated on each invocation.
 _fusion_btns: dict = {}
 _browser_btns: dict = {}
+# Cache: file_id → local thumbnail path
+_thumb_cache: dict = {}
+# Track temp files created this session for cleanup
+_thumb_paths: list = []
 
 
 # Executed when add-in is run.
@@ -112,7 +122,109 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         childDataFiles = doc.designDataFile.childReferences
         subString = " ‹+› "
 
-        docParents, docChildren, docDrawings, docRelated, docFasteners = [], [], [], [], []
+        docParents, docChildren, docDrawings, docRelated, docFasteners = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
+
+        # Build a name→component map for all components in the active design
+        _comp_by_name = {c.name: c for c in design.allComponents}
+
+        def _save_data_object(data_obj, dest) -> bool:
+            """Try all known methods to persist a DataObject to a PNG file."""
+            # Method 1: saveToFile
+            try:
+                if data_obj.saveToFile(dest):
+                    return True
+            except Exception:
+                pass
+            # Method 2: iterate known byte-property names
+            for attr in ("imageData", "data", "bytes", "content"):
+                try:
+                    raw = getattr(data_obj, attr)
+                    if raw is not None:
+                        with open(dest, "wb") as f:
+                            f.write(raw)
+                        return True
+                except Exception:
+                    pass
+            # Method 3: log all attrs so we can fix it next time
+            futil.log(
+                f"[Thumbnail] Unknown DataObject attrs: "
+                f"{[a for a in dir(data_obj) if not a.startswith('_')]}"
+            )
+            return False
+
+        def fetch_thumbnail(data_file) -> str:
+            """Get a thumbnail for data_file, writing it to THUMB_DIR.
+            Prefers Component.createThumbnail() for components present in the
+            assembly; falls back to DataFile.thumbnail future for everything else.
+            Returns the local file path or THUMB_PLACEHOLDER on failure."""
+            file_id = data_file.id
+            if file_id in _thumb_cache:
+                return _thumb_cache[file_id]
+
+            safe_urn = "".join(c if c.isalnum() else "_" for c in file_id)[:80]
+            fname = f"{uuid.uuid4().hex}_{safe_urn}.png"
+            dest = os.path.join(THUMB_DIR, fname)
+
+            # --- Strategy 1: component in the assembly ---
+            component = _comp_by_name.get(data_file.name)
+            if component:
+                try:
+                    data_obj = component.createThumbnail(32, 32, "PNG")
+                    if data_obj and _save_data_object(data_obj, dest):
+                        _thumb_cache[file_id] = dest
+                        _thumb_paths.append(dest)
+                        futil.log(f"[Thumbnail] OK (component): {data_file.name}")
+                        return dest
+                    futil.log(
+                        f"[Thumbnail] createThumbnail failed to save for: {data_file.name}"
+                    )
+                except Exception:
+                    futil.log(
+                        f"[Thumbnail] createThumbnail exception for {data_file.name}:\n"
+                        f"{traceback.format_exc()}"
+                    )
+
+            # --- Strategy 2: DataFile.thumbnail future ---
+            try:
+                future = data_file.thumbnail
+                if future is None:
+                    futil.log(f"[Thumbnail] No future for: {data_file.name}")
+                    return THUMB_PLACEHOLDER
+
+                deadline = time.time() + 5.0
+                while future.state == 0:
+                    adsk.doEvents()
+                    if time.time() > deadline:
+                        futil.log(f"[Thumbnail] Timeout: {data_file.name}")
+                        return THUMB_PLACEHOLDER
+                    time.sleep(0.05)
+
+                if future.state != 1:
+                    futil.log(
+                        f"[Thumbnail] Future failed state={future.state}: {data_file.name}"
+                    )
+                    return THUMB_PLACEHOLDER
+
+                data_obj = future.dataObject
+                if data_obj and _save_data_object(data_obj, dest):
+                    _thumb_cache[file_id] = dest
+                    _thumb_paths.append(dest)
+                    futil.log(f"[Thumbnail] OK (future): {data_file.name}")
+                    return dest
+
+            except Exception:
+                futil.log(
+                    f"[Thumbnail] Future exception for {data_file.name}:\n"
+                    f"{traceback.format_exc()}"
+                )
+
+            return THUMB_PLACEHOLDER
 
         progressBar = ui.progressBar
         progressBar.showBusy("Getting Document References…", True)
@@ -126,7 +238,13 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                     url = candidate
             except Exception:
                 pass
-            return {"name": file.name, "id": file.id, "url": url, "file": file}
+            return {
+                "name": file.name,
+                "id": file.id,
+                "url": url,
+                "file": file,
+                "thumb": None,
+            }
 
         for file in parentDataFiles or []:
             fd = make_file_data(file)
@@ -149,6 +267,13 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
             except Exception:
                 docChildren.append(fd)
 
+        # Fetch thumbnails for all collected references.
+        all_items = docParents + docChildren + docDrawings + docFasteners + docRelated
+        for fd in all_items:
+            progressBar.showBusy(f"Fetching thumbnail: {fd['name'][:40]}…", True)
+            adsk.doEvents
+            fd["thumb"] = fetch_thumbnail(fd["file"])
+
         progressBar.hide()
 
         cmd = args.command
@@ -167,13 +292,17 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
             grp = group.children
 
-            table = grp.addTableCommandInput(f"{prefix}_table", title, 3, "6:1:1")
+            # 4 columns: thumbnail | name | open | web
+            table = grp.addTableCommandInput(f"{prefix}_table", title, 4, "3:9:1:1")
             table.minimumVisibleRows = 1
             table.maximumVisibleRows = 8
             table.columnSpacing = 2
 
             for i, item in enumerate(items):
-                row = i
+                thumb_path = item.get("thumb") or THUMB_PLACEHOLDER
+                thumb_in = grp.addImageCommandInput(
+                    f"{prefix}_thumb_{i}", "", thumb_path
+                )
 
                 name_in = grp.addTextBoxCommandInput(
                     f"{prefix}_name_{i}", "", html.escape(item["name"]), 1, True
@@ -201,9 +330,10 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                         f"{prefix}_nweb_{i}", "", "–", 1, True
                     )
 
-                table.addCommandInput(name_in, row, 0)
-                table.addCommandInput(open_btn, row, 1)
-                table.addCommandInput(web_btn, row, 2)
+                table.addCommandInput(thumb_in, i, 0)
+                table.addCommandInput(name_in, i, 1)
+                table.addCommandInput(open_btn, i, 2)
+                table.addCommandInput(web_btn, i, 3)
 
         _add_table("Used In (Parents)", docParents, "parents")
         _add_table("Uses (Children)", docChildren, "children")
@@ -252,8 +382,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
-    global local_handlers, _fusion_btns, _browser_btns
+    global local_handlers, _fusion_btns, _browser_btns, _thumb_cache, _thumb_paths
     local_handlers = []
     _fusion_btns = {}
     _browser_btns = {}
+    _thumb_cache = {}
+    for path in _thumb_paths:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    _thumb_paths.clear()
     futil.log(f"{CMD_NAME} Command Destroy Event")
