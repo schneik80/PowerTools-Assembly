@@ -135,6 +135,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
         def _save_data_object(data_obj, dest) -> bool:
             """Try all known methods to persist a DataObject to a PNG file."""
+
             # Method 1: saveToFile
             try:
                 if data_obj.saveToFile(dest):
@@ -292,48 +293,63 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
             grp = group.children
 
-            # 4 columns: thumbnail | name | open | web
-            table = grp.addTableCommandInput(f"{prefix}_table", title, 4, "3:9:1:1")
+            def _set_row_tooltip(input_obj, item_name, thumb_path):
+                try:
+                    input_obj.tooltip = item_name
+                except Exception:
+                    pass
+                try:
+                    input_obj.tooltipDescription = item_name
+                except Exception:
+                    pass
+                try:
+                    input_obj.toolClipFilename = thumb_path
+                except Exception:
+                    pass
+
+            # 3 columns: name | open | web
+            table = grp.addTableCommandInput(f"{prefix}_table", title, 3, "10:1:1")
             table.minimumVisibleRows = 1
             table.maximumVisibleRows = 8
             table.columnSpacing = 2
 
             for i, item in enumerate(items):
                 thumb_path = item.get("thumb") or THUMB_PLACEHOLDER
-                thumb_in = grp.addImageCommandInput(
-                    f"{prefix}_thumb_{i}", "", thumb_path
-                )
 
                 name_in = grp.addTextBoxCommandInput(
                     f"{prefix}_name_{i}", "", html.escape(item["name"]), 1, True
                 )
+                _set_row_tooltip(name_in, item["name"], thumb_path)
 
                 if item.get("file"):
                     open_btn = grp.addBoolValueInput(
                         f"{prefix}_open_{i}", "", False, OPEN_ICON_FOLDER, False
                     )
                     open_btn.tooltip = "Open this document in Fusion"
+                    _set_row_tooltip(open_btn, item["name"], thumb_path)
                     _fusion_btns[f"{prefix}_open_{i}"] = item["file"]
                 else:
                     open_btn = grp.addTextBoxCommandInput(
                         f"{prefix}_nopen_{i}", "", "–", 1, True
                     )
+                    _set_row_tooltip(open_btn, item["name"], thumb_path)
 
                 if item.get("url"):
                     web_btn = grp.addBoolValueInput(
                         f"{prefix}_web_{i}", "", False, WEB_ICON_FOLDER, False
                     )
                     web_btn.tooltip = "Open in web browser"
+                    _set_row_tooltip(web_btn, item["name"], thumb_path)
                     _browser_btns[f"{prefix}_web_{i}"] = item["url"]
                 else:
                     web_btn = grp.addTextBoxCommandInput(
                         f"{prefix}_nweb_{i}", "", "–", 1, True
                     )
+                    _set_row_tooltip(web_btn, item["name"], thumb_path)
 
-                table.addCommandInput(thumb_in, i, 0)
-                table.addCommandInput(name_in, i, 1)
-                table.addCommandInput(open_btn, i, 2)
-                table.addCommandInput(web_btn, i, 3)
+                table.addCommandInput(name_in, i, 0)
+                table.addCommandInput(open_btn, i, 1)
+                table.addCommandInput(web_btn, i, 2)
 
         _add_table("Used In (Parents)", docParents, "parents")
         _add_table("Uses (Children)", docChildren, "children")
