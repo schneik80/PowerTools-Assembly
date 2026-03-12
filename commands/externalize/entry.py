@@ -102,6 +102,19 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         "is externalized automatically. The component selector is disabled."
     )
 
+    # Dropdown: where to save the external documents
+    save_loc = inputs.addDropDownCommandInput(
+        "save_location",
+        "Save Location",
+        adsk.core.DropDownStyles.TextListDropDownStyle,
+    )
+    save_loc.listItems.add("Same as Document", True)
+    save_loc.listItems.add("Create Sub-folder", False)
+    save_loc.tooltip = (
+        "Same as Document — saves components into the same hub folder as the active document.\n"
+        "Create Sub-folder — saves components into a new sub-folder named after the active document."
+    )
+
     futil.add_handler(
         cmd.inputChanged, command_input_changed, local_handlers=local_handlers
     )
@@ -158,8 +171,22 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         cloud_folder: adsk.core.DataFolder = active_data_file.parentFolder
 
+        save_location: str = adsk.core.DropDownCommandInput.cast(
+            inputs.itemById("save_location")
+        ).selectedItem.name
+
+        if save_location == "Create Sub-folder":
+            target_folder = _get_or_create_subfolder(
+                cloud_folder, active_data_file.name
+            )
+        else:
+            # Reuse a same-named subfolder if one already exists,
+            # otherwise fall back to the document's own folder.
+            existing_sub = _find_existing_subfolder(cloud_folder, active_data_file.name)
+            target_folder = existing_sub if existing_sub is not None else cloud_folder
+
         if externalize_all:
-            _externalize_all(design, cloud_folder)
+            _externalize_all(design, target_folder)
         else:
             sel_input = adsk.core.SelectionCommandInput.cast(
                 inputs.itemById("occurrence_sel")
@@ -169,7 +196,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 ui.messageBox("No component selected.", CMD_NAME)
                 return
 
-            _externalize_single(sel_input.selection(0).entity, design, cloud_folder)
+            _externalize_single(sel_input.selection(0).entity, design, target_folder)
 
     except:  # pylint:disable=bare-except
         app.log(f"{CMD_NAME} failed:\n{traceback.format_exc()}")
@@ -178,6 +205,31 @@ def command_execute(args: adsk.core.CommandEventArgs):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _get_or_create_subfolder(
+    parent_folder: adsk.core.DataFolder, name: str
+) -> adsk.core.DataFolder:
+    """Return the subfolder with the given name inside parent_folder,
+    creating it if it does not already exist."""
+    sub_folders = parent_folder.dataFolders
+    for i in range(sub_folders.count):
+        folder = sub_folders.item(i)
+        if folder.name == name:
+            return folder
+    return sub_folders.add(name)
+
+
+def _find_existing_subfolder(
+    parent_folder: adsk.core.DataFolder, name: str
+) -> adsk.core.DataFolder:
+    """Return the subfolder with the given name inside parent_folder, or None."""
+    sub_folders = parent_folder.dataFolders
+    for i in range(sub_folders.count):
+        folder = sub_folders.item(i)
+        if folder.name == name:
+            return folder
+    return None
 
 
 def _find_existing_cloud_file(cloud_folder: adsk.core.DataFolder, comp_name: str):
@@ -211,7 +263,7 @@ def _save_to_cloud(
 def _externalize_single(
     entity,
     design: adsk.fusion.Design,
-    cloud_folder: adsk.core.DataFolder,
+    target_folder: adsk.core.DataFolder,
 ):
     """Externalize a single selected occurrence."""
     if isinstance(entity, adsk.fusion.Occurrence):
@@ -229,15 +281,15 @@ def _externalize_single(
     cached_transform: adsk.core.Matrix3D = occ.transform2
     root = design.rootComponent
 
-    saved_data_file = _find_existing_cloud_file(cloud_folder, comp_name)
+    saved_data_file = _find_existing_cloud_file(target_folder, comp_name)
     if saved_data_file is not None:
         action = "reused existing cloud file"
     else:
-        saved_data_file = _save_to_cloud(occ.component, comp_name, cloud_folder)
+        saved_data_file = _save_to_cloud(occ.component, comp_name, target_folder)
         if saved_data_file is None:
             ui.messageBox(f'Cloud upload of "{comp_name}" failed.', CMD_NAME)
             return
-        action = f'saved to "{cloud_folder.name}"'
+        action = f'saved to "{target_folder.name}"'
 
     occ.deleteMe()
     root.occurrences.addByInsert(saved_data_file, cached_transform, True)
@@ -250,7 +302,7 @@ def _externalize_single(
 
 def _externalize_all(
     design: adsk.fusion.Design,
-    cloud_folder: adsk.core.DataFolder,
+    target_folder: adsk.core.DataFolder,
 ):
     """Externalize every local first-level component in the active assembly."""
     root = design.rootComponent
@@ -271,6 +323,7 @@ def _externalize_all(
             )
 
     total = len(pending)
+    futil.log(f"{CMD_NAME}: total local components to externalize = {total}")
     if total == 0:
         ui.messageBox(
             "No local first-level components were found to externalize.", CMD_NAME
@@ -278,7 +331,7 @@ def _externalize_all(
         return
 
     progress_bar = ui.progressBar
-    progress_bar.show("Externalizing component %v of %m…", 1, total)
+    progress_bar.show(f"Externalizing component %v of {total}…", 1, total)
 
     replaced = 0
     for idx, data in enumerate(pending):
@@ -287,10 +340,10 @@ def _externalize_all(
         adsk.doEvents()
 
         try:
-            saved_data_file = _find_existing_cloud_file(cloud_folder, comp_name)
+            saved_data_file = _find_existing_cloud_file(target_folder, comp_name)
             if saved_data_file is None:
                 saved_data_file = _save_to_cloud(
-                    data["component"], comp_name, cloud_folder
+                    data["component"], comp_name, target_folder
                 )
                 if saved_data_file is None:
                     futil.log(
@@ -307,6 +360,20 @@ def _externalize_all(
                 f'{CMD_NAME}: Failed to externalize "{comp_name}":\n'
                 f"{traceback.format_exc()}"
             )
+
+        # Every 5 replacements, trigger a local recovery save.
+        if total > 5 and replaced > 0 and replaced % 5 == 0:
+            try:
+                autosave = ui.commandDefinitions.itemById("AutoSaveFilesCommand")
+                autosave.execute()
+                futil.log(
+                    f"{CMD_NAME}: autosave triggered after {replaced} components."
+                )
+            except:  # pylint:disable=bare-except
+                app.log(
+                    f"{CMD_NAME}: autosave failed after {replaced} components:\n"
+                    f"{traceback.format_exc()}"
+                )
 
     progress_bar.hide()
 
