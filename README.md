@@ -23,6 +23,14 @@ Show all references in the active document and their status. Provides utilities 
 - Allow the selection of versions per reference.
 - Open a reference in a new tab.
 
+**[Externalize](./docs/Externalize.md)**
+
+Save a local (inline) component as an external cloud document and re-insert it at its original assembly position.
+
+- Externalize a single selected component occurrence.
+- Externalize all local first-level components in the active assembly in one step.
+- Reuses an existing cloud file if one with the same name already exists in the folder.
+
 **[Get and Update](./docs/Get%20and%20Update.md)**
 
 Typical x-ref assemblies will use assembly contexts to create associativity across parts. When new versions of x-refs are available one must load the new versions and then manually update the out of date contexts. Data Power Tools adds a QAT command to automatically get all latests and then update contexts.

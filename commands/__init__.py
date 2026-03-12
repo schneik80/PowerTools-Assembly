@@ -1,6 +1,7 @@
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
+from .externalize import entry as externalize
 from .insertSTEP import entry as insertSTEP
 from .refmanager import entry as refmanager
 from .refrences import entry as refrences
@@ -11,6 +12,7 @@ commands = [
     assemblystats,
     getandupdate,
     bottomupupdate,
+    externalize,
     insertSTEP,
     refmanager,
     refrences,
