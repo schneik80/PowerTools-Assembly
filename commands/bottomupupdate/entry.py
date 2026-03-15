@@ -543,7 +543,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         design = app.activeProduct
         appVersionBuild = app.version  # Store Fusion version for save comments
         if not isinstance(design, adsk.fusion.Design):
-            ui.messageBox("No active Fusion 360 design")
+            ui.messageBox("No active Fusion design")
             return
 
         # Read dialog values from user inputs

@@ -12,7 +12,7 @@ The Document Refresh command closes the active document, retrieves the latest ve
 
 ## Prerequisites
 
-- A Fusion 360 3D Design must be active.
+- A Autodesk Fusion 3D Design must be active.
 - The document must be saved to an Autodesk Hub (cloud project). Local documents that are not associated with a Hub cannot be refreshed.
 - Unsaved local changes will be discarded. Save any pending work before running this command.
 
@@ -20,27 +20,27 @@ The Document Refresh command closes the active document, retrieves the latest ve
 
 1. Ensure any local changes are saved.
 2. On the Quick Access Toolbar, select **File**, then select **Refresh Active Document**.
-3. Fusion 360 closes the active document, retrieves the latest version from the Autodesk Hub, and reopens it automatically.
+3. Autodesk Fusion closes the active document, retrieves the latest version from the Autodesk Hub, and reopens it automatically.
 
-> **Note:** The close and reopen sequence is instantaneous. Fusion 360 displays the document in the same state as when it was last saved to the Hub by any team member.
+> **Note:** The close and reopen sequence is instantaneous. Autodesk Fusion displays the document in the same state as when it was last saved to the Hub by any team member.
 
 ## Access
 
-The **Refresh Active Document** command is located in the **File** dropdown menu on the Fusion 360 Quick Access Toolbar.
+The **Refresh Active Document** command is located in the **File** dropdown menu on the Autodesk Fusion Quick Access Toolbar.
 
 ![File menu access](assets/docrefresh_001.png)
 
 ## Architecture
 
-The following diagram shows how the Document Refresh command interacts with Fusion 360 and the Autodesk Hub.
+The following diagram shows how the Document Refresh command interacts with Autodesk Fusion and the Autodesk Hub.
 
 ```mermaid
 C4Context
   title Document Refresh – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 team member pulling the latest design version")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core)")
+  Person(user, "Design Engineer", "Autodesk Fusion team member pulling the latest design version")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core)")
   System_Ext(hub, "Autodesk Hub", "Cloud document storage and version management")
 
   Rel(user, addin, "Runs Document Refresh")
@@ -68,3 +68,6 @@ C4Component
 
 [Back to PowerTools Assembly](../README.md)
 
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

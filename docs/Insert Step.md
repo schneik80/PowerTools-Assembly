@@ -2,7 +2,7 @@
 
 [Back to PowerTools Assembly](../README.md)
 
-The Insert STEP File command lets you browse your local computer for a STEP or F3D file and insert it directly as a component in the active Fusion 360 design document. Use this command when you want to incorporate a STEP model into an existing assembly without first uploading the file to an Autodesk Hub or opening it in a separate document tab.
+The Insert STEP File command lets you browse your local computer for a STEP or F3D file and insert it directly as a component in the active Autodesk Fusion design document. Use this command when you want to incorporate a STEP model into an existing assembly without first uploading the file to an Autodesk Hub or opening it in a separate document tab.
 
 ## What you can do
 
@@ -13,22 +13,22 @@ The Insert STEP File command lets you browse your local computer for a STEP or F
 
 ## Prerequisites
 
-- A Fusion 360 3D Design must be active.
+- A Autodesk Fusion 3D Design must be active.
 - The STEP or F3D file must be accessible on the local file system.
 
 ## How to use Insert STEP File
 
-1. Open the Fusion 360 Design workspace with an active 3D design.
+1. Open the Autodesk Fusion Design workspace with an active 3D design.
 2. Locate the **Insert STEP file…** command using one of the access paths described in the [Access](#access) section below.
 3. In the file browser dialog, navigate to the STEP or F3D file you want to insert.
 4. Select the file and select **Open**.
-5. Fusion 360 inserts the file as a local component at the origin of the active design.
+5. Autodesk Fusion inserts the file as a local component at the origin of the active design.
 
 > **Note:** The inserted component is stored inline with the parent document. To make it an independent cloud document that can be shared or versioned separately, use the [Externalize](./Externalize.md) command after insertion.
 
 ## Access
 
-The **Insert STEP file…** command appears in one of two locations depending on whether the Assembly Tab preview feature is enabled in your Fusion 360 installation:
+The **Insert STEP file…** command appears in one of two locations depending on whether the Assembly Tab preview feature is enabled in your Autodesk Fusion installation:
 
 | Condition | Panel location |
 |---|---|
@@ -37,15 +37,15 @@ The **Insert STEP file…** command appears in one of two locations depending on
 
 ## Architecture
 
-The following diagram shows how the Insert STEP File command interacts with Fusion 360.
+The following diagram shows how the Insert STEP File command interacts with Autodesk Fusion.
 
 ```mermaid
 C4Context
   title Insert STEP File – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user inserting a local STEP model")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  Person(user, "Design Engineer", "Autodesk Fusion user inserting a local STEP model")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core / adsk.fusion)")
   System_Ext(fs, "Local File System", "Source of STEP or F3D files")
 
   Rel(user, addin, "Runs Insert STEP File")
@@ -74,3 +74,6 @@ C4Component
 
 [Back to PowerTools Assembly](../README.md)
 
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

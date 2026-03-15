@@ -2,7 +2,7 @@
 
 [Back to PowerTools Assembly](../README.md)
 
-The Externalize command converts one or more local (inline) components in the active Fusion 360 assembly into independent cloud documents, then re-inserts them at their original positions. Use this command to turn inline geometry into separately versioned, team-shareable files without rebuilding the assembly manually.
+The Externalize command converts one or more local (inline) components in the active Autodesk Fusion assembly into independent cloud documents, then re-inserts them at their original positions. Use this command to turn inline geometry into separately versioned, team-shareable files without rebuilding the assembly manually.
 
 ## What you can do
 
@@ -15,14 +15,14 @@ The Externalize command converts one or more local (inline) components in the ac
 
 ## Prerequisites
 
-- A Fusion 360 3D Design must be active.
+- A Autodesk Fusion 3D Design must be active.
 - The active document must be saved to an Autodesk Hub folder. The command saves external components to that same Hub folder (or a sub-folder of it).
 
 ## How to use Externalize
 
 ### Externalize a single component
 
-1. Open the Fusion 360 Design workspace with an active saved assembly.
+1. Open the Autodesk Fusion Design workspace with an active saved assembly.
 2. On the **PowerTools Assembly** panel, select **Externalize**.
 3. In the dialog, select the component occurrence you want to externalize in the canvas or browser.
 4. In the **Save Location** dropdown, choose one of the following:
@@ -42,7 +42,7 @@ The command uploads the component to the target folder, removes the inline occur
 2. In the dialog, select the **Externalize All** checkbox. The component selector becomes unavailable.
 3. Choose a save location and select **OK**.
 
-Fusion 360 processes each local first-level component in sequence. A progress bar in the lower-right corner of the window shows the current status. When complete, a summary message reports how many components were processed successfully.
+Autodesk Fusion processes each local first-level component in sequence. A progress bar in the lower-right corner of the window shows the current status. When complete, a summary message reports how many components were processed successfully.
 
 > **Note:** If a component cannot be externalized (for example, because the upload fails), it is skipped and logged. All successfully externalized components are re-inserted regardless of individual failures.
 
@@ -50,19 +50,19 @@ Fusion 360 processes each local first-level component in sequence. A progress ba
 
 ## Access
 
-The **Externalize** command is located on the **PowerTools Assembly** panel in the Fusion 360 Design workspace.
+The **Externalize** command is located on the **PowerTools Assembly** panel in the Autodesk Fusion Design workspace.
 
 ## Architecture
 
-The following diagram shows how the Externalize command interacts with Fusion 360 and the Autodesk Hub.
+The following diagram shows how the Externalize command interacts with Autodesk Fusion and the Autodesk Hub.
 
 ```mermaid
 C4Context
   title Externalize – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user converting inline components to cloud documents")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  Person(user, "Design Engineer", "Autodesk Fusion user converting inline components to cloud documents")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core / adsk.fusion)")
   System_Ext(hub, "Autodesk Hub", "Cloud folder storing the active document and newly created external components")
 
   Rel(user, addin, "Runs Externalize command")
@@ -95,3 +95,6 @@ C4Component
 
 [Back to PowerTools Assembly](../README.md)
 
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

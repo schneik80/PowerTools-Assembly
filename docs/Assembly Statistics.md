@@ -2,7 +2,7 @@
 
 [Back to PowerTools Assembly](../README.md)
 
-The Assembly Statistics command displays a summary of the structure, component counts, and joint configuration of the active Fusion 360 design. Use this command to quickly evaluate the complexity of an assembly without manually inspecting the browser tree.
+The Assembly Statistics command displays a summary of the structure, component counts, and joint configuration of the active Autodesk Fusion design. Use this command to quickly evaluate the complexity of an assembly without manually inspecting the browser tree.
 
 ## What you can do
 
@@ -17,12 +17,12 @@ The Assembly Statistics command displays a summary of the structure, component c
 
 ## Prerequisites
 
-- A Fusion 360 3D Design must be active.
+- A Autodesk Fusion 3D Design must be active.
 - The active document must be saved.
 
 ## How to use Assembly Statistics
 
-1. Open the Fusion 360 Design workspace.
+1. Open the Autodesk Fusion Design workspace.
 2. On the **Utilities** tab, in the **Tools** panel, select **Assembly Statistics**.
 3. Review the statistics displayed in the dialog.
 4. Select **Close** to dismiss the dialog.
@@ -46,21 +46,21 @@ The dialog reports the following values:
 
 ## Access
 
-The **Assembly Statistics** command is located on the **Utilities** tab, in the **Tools** panel of the Fusion 360 Design workspace.
+The **Assembly Statistics** command is located on the **Utilities** tab, in the **Tools** panel of the Autodesk Fusion Design workspace.
 
 ![Toolbar access](assets/assemblystats_002.png)
 
 ## Architecture
 
-The following diagram shows how the Assembly Statistics command interacts with Fusion 360 and its data model.
+The following diagram shows how the Assembly Statistics command interacts with Autodesk Fusion and its data model.
 
 ```mermaid
 C4Context
   title Assembly Statistics – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user reviewing assembly structure")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  Person(user, "Design Engineer", "Autodesk Fusion user reviewing assembly structure")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core / adsk.fusion)")
   System_Ext(hub, "Autodesk Hub", "Cloud document storage and version management")
 
   Rel(user, addin, "Runs Assembly Statistics")
@@ -89,3 +89,6 @@ C4Component
 
 [Back to PowerTools Assembly](../README.md)
 
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

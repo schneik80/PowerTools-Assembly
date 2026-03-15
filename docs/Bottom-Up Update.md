@@ -12,25 +12,25 @@ The Bottom-Up Update command traverses the active assembly hierarchy, then opens
 - Hide origins, joints, sketches, joint origins, and canvases before saving to produce cleaner component files.
 - Skip standard library components to avoid unnecessary processing overhead.
 - Resume a previously interrupted run by skipping components that are already saved.
-- Configure a pause interval after each save to allow Fusion 360 time between heavy operations.
+- Configure a pause interval after each save to allow Autodesk Fusion time between heavy operations.
 - Log all processing activity, with timestamps, to a text file for review and audit.
 
 ## Prerequisites
 
 Before running the Bottom-Up Update command, confirm the following:
 
-- A Fusion 360 3D Design is active.
+- A Autodesk Fusion 3D Design is active.
 - The active document is saved to an Autodesk Hub.
 - The active document contains external references to other components.
 - You have write access to all component files that will be processed.
 
 ## How to use Bottom-Up Update
 
-1. Open the Fusion 360 Design workspace with an active saved assembly that contains external references.
+1. Open the Autodesk Fusion Design workspace with an active saved assembly that contains external references.
 2. On the **Utilities** tab, in the **Tools** panel, select **Bottom-up Update**.
 3. Configure the options in the three-tab dialog (see [Command options](#command-options) below).
 4. Select **OK** to begin processing.
-5. Monitor progress in the Fusion 360 Text Commands window. Do not interrupt the operation.
+5. Monitor progress in the Autodesk Fusion Text Commands window. Do not interrupt the operation.
 6. When the command completes, a summary message confirms the number of components processed and the elapsed time.
 7. If logging is enabled, review the log file at the path shown in the completion message.
 
@@ -126,15 +126,15 @@ When logging is enabled, the log file records:
 
 ## Architecture
 
-The following diagrams show how the Bottom-Up Update command fits into the Fusion 360 ecosystem and how its internal components interact.
+The following diagrams show how the Bottom-Up Update command fits into the Autodesk Fusion ecosystem and how its internal components interact.
 
 ```mermaid
 C4Context
   title Bottom-Up Update – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user performing bulk assembly maintenance")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  Person(user, "Design Engineer", "Autodesk Fusion user performing bulk assembly maintenance")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core / adsk.fusion)")
   System_Ext(hub, "Autodesk Hub", "Cloud document storage providing reference version data")
   System_Ext(fs, "Local File System", "Log file output destination")
 
@@ -206,8 +206,12 @@ The final list is the bottom-up processing order. The command iterates it in seq
 
 **Why post-order matters**
 
-If a parent component is saved before its children are up to date, Fusion 360 resolves the parent's references against the old version of each child. The post-order traversal eliminates this problem: by the time any parent document is opened and saved, every document it depends on has already been updated and saved to the Hub.
+If a parent component is saved before its children are up to date, Autodesk Fusion resolves the parent's references against the old version of each child. The post-order traversal eliminates this problem: by the time any parent document is opened and saved, every document it depends on has already been updated and saved to the Hub.
 
 ---
 
 [Back to PowerTools Assembly](../README.md)
+
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

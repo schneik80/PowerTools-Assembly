@@ -2,7 +2,7 @@
 
 [Back to PowerTools Assembly](../README.md)
 
-The Document References command displays a dialog that lists all documents related to the active Fusion 360 design, organized by relationship type. Use this command to understand how the active document fits into a larger project — for example, to identify which assemblies use the active part, which drawings reference it, or which related discipline documents are linked to it.
+The Document References command displays a dialog that lists all documents related to the active Autodesk Fusion design, organized by relationship type. Use this command to understand how the active document fits into a larger project — for example, to identify which assemblies use the active part, which drawings reference it, or which related discipline documents are linked to it.
 
 ## What you can do
 
@@ -11,19 +11,19 @@ The Document References command displays a dialog that lists all documents relat
 - View all drawings associated with the active document.
 - View all standard component (fastener) references used by the active document.
 - View all related data documents created with the PowerTools Related Data workflow, separated from structural assembly references.
-- Open any listed document directly in Fusion 360 by selecting the open button next to the document name.
+- Open any listed document directly in Autodesk Fusion by selecting the open button next to the document name.
 - Open any listed document in the Autodesk Fusion web browser by selecting the web button next to the document name.
 - See thumbnail previews of each referenced document.
 
 ## Prerequisites
 
-- A Fusion 360 3D Design must be active.
+- A Autodesk Fusion 3D Design must be active.
 - The active document must be saved to an Autodesk Hub.
 - An internet connection is required. The command displays a message if you are offline.
 
 ## How to use Document References
 
-1. Open the Fusion 360 Design workspace with an active saved design.
+1. Open the Autodesk Fusion Design workspace with an active saved design.
 2. On the **Utilities** tab, in the **Tools** panel, select **Document References**.
 3. The dialog opens and organizes references into the following groups:
 
@@ -46,7 +46,7 @@ The Document References command displays a dialog that lists all documents relat
 
 ## Access
 
-The **Document References** command is located on the **Utilities** tab, in the **Tools** panel of the Fusion 360 Design workspace.
+The **Document References** command is located on the **Utilities** tab, in the **Tools** panel of the Autodesk Fusion Design workspace.
 
 ![Toolbar access](assets/docrefs_002.png)
 
@@ -54,15 +54,15 @@ The **Document References** command is located on the **Utilities** tab, in the 
 
 ## Architecture
 
-The following diagram shows how the Document References command interacts with Fusion 360 and the Autodesk Hub.
+The following diagram shows how the Document References command interacts with Autodesk Fusion and the Autodesk Hub.
 
 ```mermaid
 C4Context
   title Document References – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user reviewing document relationships")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  Person(user, "Design Engineer", "Autodesk Fusion user reviewing document relationships")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core / adsk.fusion)")
   System_Ext(hub, "Autodesk Hub", "Cloud document graph, thumbnail data, and web URLs")
 
   Rel(user, addin, "Runs Document References")
@@ -95,3 +95,7 @@ C4Component
 ---
 
 [Back to PowerTools Assembly](../README.md)
+
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

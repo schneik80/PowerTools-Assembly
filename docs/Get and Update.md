@@ -2,7 +2,7 @@
 
 [Back to PowerTools Assembly](../README.md)
 
-The Get and Update command retrieves the latest versions of all child references and then immediately updates all out-of-date assembly contexts in a single operation. Use this command instead of the default Fusion 360 **Get Latest** button when you need to ensure that both document versions and their derived assembly contexts are current.
+The Get and Update command retrieves the latest versions of all child references and then immediately updates all out-of-date assembly contexts in a single operation. Use this command instead of the default Autodesk Fusion **Get Latest** button when you need to ensure that both document versions and their derived assembly contexts are current.
 
 ## What you can do
 
@@ -13,35 +13,35 @@ The Get and Update command retrieves the latest versions of all child references
 
 ## Prerequisites
 
-- A Fusion 360 3D Design with external references must be active.
+- A Autodesk Fusion 3D Design with external references must be active.
 - The document must be saved to an Autodesk Hub.
 
 ## How to use Get and Update
 
 1. On the Quick Access Toolbar (QAT), select the **Get and Update** button.
-2. Fusion 360 executes **Get All Latest** to download the newest versions of all child references.
-3. Fusion 360 then executes **Update All Contexts From Parent** to refresh all assembly contexts that depend on the updated references.
+2. Autodesk Fusion executes **Get All Latest** to download the newest versions of all child references.
+3. Autodesk Fusion then executes **Update All Contexts From Parent** to refresh all assembly contexts that depend on the updated references.
 4. Review the assembly to confirm references and contexts are current.
 
-> **Tip:** If Fusion 360 shows a yellow triangle indicator on the QAT, that signal means at least one child reference has a newer version. Run Get and Update to resolve the indicator and update all derived contexts in one step.
+> **Tip:** If Autodesk Fusion shows a yellow triangle indicator on the QAT, that signal means at least one child reference has a newer version. Run Get and Update to resolve the indicator and update all derived contexts in one step.
 
 ## Access
 
-The **Get and Update** command is located on the Fusion 360 **Quick Access Toolbar (QAT)**.
+The **Get and Update** command is located on the Autodesk Fusion **Quick Access Toolbar (QAT)**.
 
 ![QAT access](assets/getandupdate.png)
 
 ## Architecture
 
-The following diagram shows how the Get and Update command interacts with Fusion 360.
+The following diagram shows how the Get and Update command interacts with Autodesk Fusion.
 
 ```mermaid
 C4Context
   title Get and Update – System Context
 
-  Person(user, "Design Engineer", "Fusion 360 user keeping references and contexts current")
-  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
-  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core)")
+  Person(user, "Design Engineer", "Autodesk Fusion user keeping references and contexts current")
+  System(addin, "PowerTools Assembly", "Autodesk Fusion add-in")
+  System_Ext(fusion, "Autodesk Fusion", "Host application and Python API (adsk.core)")
   System_Ext(hub, "Autodesk Hub", "Cloud document storage and version management")
 
   Rel(user, addin, "Clicks Get and Update on QAT")
@@ -68,3 +68,7 @@ C4Component
 ---
 
 [Back to PowerTools Assembly](../README.md)
+
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*
