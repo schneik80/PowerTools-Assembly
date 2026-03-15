@@ -1,289 +1,213 @@
 # Bottom-Up Update
 
-The Bottom-Up Update command processes assembly components in dependency order, updating and saving each component from the bottom of the hierarchy upward. This ensures that all references are properly updated before dependent components are processed.
+[Back to PowerTools Assembly](../README.md)
 
-## Overview
+The Bottom-Up Update command traverses the active assembly hierarchy, then opens, updates, and saves each referenced component document in dependency order — from the deepest leaf components upward to the root. This bottom-up sequence ensures that every component's references are current before the components that depend on it are processed.
 
-This command is designed to update complex assemblies by:
-- Analyzing the assembly structure to determine component dependencies
-- Processing components in bottom-up order (dependencies first)
-- Opening each component document individually
-- Updating references and applying design intent
-- Optionally hiding various UI elements for cleaner saves
-- Rebuilding and saving each component
-- Providing detailed logging of the entire process
+## What you can do
+
+- Automatically process all components in a complex assembly in correct dependency order.
+- Force a complete rebuild of every component to verify they are up to date.
+- Apply design document intent (Part, Assembly, or Hybrid) to each component automatically based on its content.
+- Hide origins, joints, sketches, joint origins, and canvases before saving to produce cleaner component files.
+- Skip standard library components to avoid unnecessary processing overhead.
+- Resume a previously interrupted run by skipping components that are already saved.
+- Configure a pause interval after each save to allow Fusion 360 time between heavy operations.
+- Log all processing activity, with timestamps, to a text file for review and audit.
 
 ## Prerequisites
 
-Before running the Bottom-Up Update command:
+Before running the Bottom-Up Update command, confirm the following:
 
-1. **Active Design Document**: A Fusion 360 design document must be active
-2. **Saved Document**: The active document must be saved
-3. **References Present**: The document must contain references to other components
-4. **File Access**: Ensure you have write access to all component files that will be processed
+- A Fusion 360 3D Design is active.
+- The active document is saved to an Autodesk Hub.
+- The active document contains external references to other components.
+- You have write access to all component files that will be processed.
 
-## Command Dialog
+## How to use Bottom-Up Update
 
-The Bottom-Up Update dialog is organized into three tabs:
+1. Open the Fusion 360 Design workspace with an active saved assembly that contains external references.
+2. On the **Utilities** tab, in the **Tools** panel, select **Bottom-up Update**.
+3. Configure the options in the three-tab dialog (see [Command options](#command-options) below).
+4. Select **OK** to begin processing.
+5. Monitor progress in the Fusion 360 Text Commands window. Do not interrupt the operation.
+6. When the command completes, a summary message confirms the number of components processed and the elapsed time.
+7. If logging is enabled, review the log file at the path shown in the completion message.
 
-### Main Tab
+## Command options
 
-The Main tab contains the core processing options:
+The Bottom-Up Update dialog is organized into three tabs.
 
-#### Rebuild all
-- **Default**: Enabled
-- **Description**: Forces a complete rebuild of all components to ensure they are up to date
-- **Recommendation**: Keep enabled unless you specifically need to preserve the current state
+### Main tab
 
-#### Skip standard components
-- **Default**: Enabled  
-- **Description**: Skips processing of standard library components during the update
-- **Recommendation**: Keep enabled to avoid unnecessary processing of library components
+| Option | Default | Description |
+|---|---|---|
+| **Rebuild all** | Enabled | Forces a complete rebuild (`computeAll()`) of each component to ensure it is current. Disable only when you need to preserve the existing computed state. |
+| **Skip standard components** | Enabled | Skips Standard Components library documents (such as McMaster-Carr or Misumi parts) to avoid unnecessary processing. |
+| **Skip already saved documents** | Disabled | Skips components that were already saved during the current Fusion session. Enable this option to resume a run that was interrupted. |
+| **Apply Design Doc Intent** | Disabled | Automatically determines and applies the appropriate Fusion document intent to each component. See [Design intent logic](#design-intent-logic) below. |
+| **Pause after save (seconds)** | 4 | Number of seconds to wait after saving each component. Increase this value for large assemblies or slower network storage. Set to 0 to disable pausing. |
 
-#### Skip already saved Documents
-- **Default**: Disabled
-- **Description**: Skips components that have already been saved in this Fusion client build
-- **Use Case**: Useful when re-running the command after a partial completion or system interruption
+### Visibility tab
 
-#### Apply Design Doc Intent
-- **Default**: Disabled
-- **Description**: Automatically applies the appropriate design intent to each component based on its content:
-  - **Part Intent**: Applied to components with no child components (leaf nodes)
-  - **Assembly Intent**: Applied to components with child components but no sketches or bodies
-  - **Hybrid Assembly Intent**: Applied to components with both child components AND sketches or bodies
-- **Benefits**: Ensures proper component classification and optimizes Fusion 360 performance
+These options hide specific element types in each component before saving. Each option also configures the corresponding folder visibility so that new elements of that type show or hide correctly in future sessions.
 
-### Visibility Tab
+| Option | Default | Effect on folder visibility |
+|---|---|---|
+| **Hide origins** | Disabled | Hides coordinate system origins. |
+| **Hide joints** | Disabled | Hides all joints. Sets the Joints folder to **hidden** so new joints do not appear automatically. |
+| **Hide sketches** | Disabled | Hides all sketches. Sets the Sketches folder to **visible** so new sketches appear automatically. |
+| **Hide joint origins** | Disabled | Hides all joint origin markers. Sets the Joint Origins folder to **visible** so new joint origins appear automatically. |
+| **Hide canvases** | Disabled | Hides all canvases. Sets the Canvases folder to **visible** so new canvases appear automatically. |
 
-The Visibility tab provides options to hide various UI elements during processing:
+### Logging tab
 
-#### Hide origins
-- **Default**: Disabled
-- **Description**: Hides the coordinate system origins in each component before saving
-- **Use Case**: Creates cleaner component files without visible coordinate systems
+| Option | Default | Description |
+|---|---|---|
+| **Log Progress** | Enabled | Writes detailed processing events to a plain-text log file (.txt, UTF-8). |
+| **Log file path** | Auto-generated | Defaults to `[DocumentName].txt` in the user's Documents folder. Select **Browse…** to choose a different location. |
 
-#### Hide joints
-- **Default**: Disabled
-- **Description**: Hides all joints in each component before saving. Sets the Joints folder visibility off so new joints DO NOT appear and clutter the canvas.
-- **Use Case**: Useful for presentations or when joints clutter the component view
+## Processing sequence
 
-#### Hide sketches
-- **Default**: Disabled
-- **Description**: Hides all sketches in each component before saving. Sets the Sketches folder visibility On so new sketches appear as expected.
-- **Use Case**: Creates cleaner final components by hiding construction sketches
+When you select **OK**, the command performs the following steps:
 
-#### Hide joint origins
-- **Default**: Disabled
-- **Description**: Hides all joint origin markers in each component before saving. Sets the Joint Origins folder visibility On so new Joint Origins appear as expected.
-- **Use Case**: Removes joint reference points for cleaner component appearance
+1. **Assembly traversal** — Recursively walks the entire assembly and records all component dependencies as a directed acyclic graph (DAG).
+2. **Topological sort** — Sorts the dependency graph in bottom-up order so that leaf components are processed before the assemblies that use them.
+3. **Component processing** — For each component in order:
+   - Opens the component document.
+   - Calls `updateAllReferences()` to bring references up to date.
+   - Activates the Fusion Solid Environment workspace.
+   - Applies selected visibility options.
+   - Applies design intent if enabled.
+   - Calls `computeAll()` to rebuild if **Rebuild all** is enabled.
+   - Saves the document with a timestamp comment.
+   - Closes the component document.
+4. **Final assembly update** — Executes **Get All Latest** and **Update All From Parent** on the root assembly, then saves the root document.
+5. **Completion report** — Displays a summary with the number of components processed and total elapsed time, and writes the final log entry.
 
-#### Hide canvases
-- **Default**: Disabled
-- **Description**: Hides all canvases in each component before saving. Sets the Canvases folder visibility On so new canvases appear as expected.
-- **Use Case**: Hides canvas elements that may not be needed in final components
+## Design intent logic
 
-### Logging Tab
+When **Apply Design Doc Intent** is enabled, the command analyzes each component and applies one of the following intents:
 
-The Logging tab controls the detailed logging functionality:
+| Intent | Criteria | Fusion command applied |
+|---|---|---|
+| **Part** | Component has no child occurrences (leaf node) | `Fusion.setDocumentExperience Part` |
+| **Assembly** | Component has child occurrences but no sketches or bodies | `Fusion.setDocumentExperience xrefAssembly` |
+| **Hybrid Assembly** | Component has child occurrences AND contains sketches or bodies | `Fusion.setDocumentExperience xrefAssembly hybridAssembly` |
 
-#### Log Progress
-- **Default**: Enabled
-- **Description**: Enables detailed progress logging to a text file during the update process
-- **Benefits**: 
-  - Track which components were processed
-  - Debug issues with specific components
-  - Maintain an audit trail of changes
-  - Monitor processing time and performance
+## Log file content
 
-#### Log File Location
-- **Default**: Auto-generated filename in the user's Documents folder
-- **Description**: Click "Browse…" to select a custom location for the log file
-- **Auto-naming**: If not specified, uses format: `[DocumentName].txt` in ~/Documents
-- **File Format**: Plain text (.txt) files with UTF-8 encoding
+When logging is enabled, the log file records:
 
-## Processing Flow
+- The active document name, project, and document ID.
+- The command execution timestamp and all selected options.
+- The full bottom-up processing order.
+- For each component: open/close events, reference update confirmations, visibility changes, intent application details, rebuild status, and save events with timestamps.
+- Any errors or warnings encountered for individual components.
+- Final summary statistics: total components processed, total elapsed time, and completion status.
 
-When you execute the command, the following process occurs:
+## Best practices
 
-### 1. Assembly Analysis
-- Traverses the entire assembly structure recursively
-- Identifies all component dependencies using a directed acyclic graph (DAG)
-- Creates a dependency tree of the assembly structure
-- Generates processing order based on component relationships
-
-### 2. Dependency Ordering
-- Sorts components in bottom-up order using topological sorting
-- Ensures dependencies are processed before dependent components
-- Reports the processing order in the log
-- Skips the root component (processed separately at the end)
-
-### 3. Component Processing
-For each component in dependency order:
-- **Document Management**: Opens the component document for editing
-- **Reference Updates**: Updates all references in the component using `updateAllReferences()`
-- **Workspace Activation**: Ensures proper Fusion Solid Environment workspace is active
-- **Visibility Controls**: Applies selected visibility options (hide origins, sketches, joints, etc.)
-- **Design Intent Application**: Applies appropriate design intent based on component content:
-  - Analyzes child components, sketches, and bodies
-  - Executes appropriate Fusion text commands for intent classification
-- **Rebuilding**: Forces complete rebuild if rebuild option is enabled using `computeAll()`
-- **Change Detection**: Adds/removes temporary attributes to trigger change detection
-- **Document Saving**: Saves with timestamp and version information
-- **Cleanup**: Closes the component document
-
-### 4. Final Assembly Updates
-- Executes "Get All Latest" command to ensure current versions
-- Executes "Update All From Parent" command to refresh all references
-- Saves the main assembly document
-- Provides completion statistics
-
-### 5. Completion
-- Reports final statistics (components processed, time taken)
-- Clears all temporary data and global variables for subsequent runs
-- Displays completion message with log file location
-
-## Logging Output
-
-When logging is enabled, the log file contains:
-
-### Header Information
-- Active document parent project name and document ID
-- Command execution timestamp and configuration options
-- Bottom-up processing order (complete component list)
-
-### Processing Details
-For each component:
-- Document open/close events with timestamps
-- Reference update confirmations
-- Visibility changes applied (with counts of affected elements)
-- Design intent application results with detailed reasoning
-- Rebuild completion confirmations
-- Save events with timestamps
-- Any errors or warnings encountered
-
-### Summary Statistics
-- Total components processed successfully
-- Total processing time in seconds
-- Final completion status
-- Global variable cleanup confirmation
-
-## Design Intent Logic
-
-The Apply Design Doc Intent feature uses intelligent analysis to determine the appropriate intent:
-
-### Part Intent
-- **Criteria**: Component has no child components (occurrences.count == 0)
-- **Command**: `Fusion.setDocumentExperience Part`
-- **Use Case**: Leaf components that contain only geometry
-
-### Assembly Intent  
-- **Criteria**: Component has child components but no sketches or bodies
-- **Command**: `Fusion.setDocumentExperience xrefAssembly`
-- **Use Case**: Pure assemblies that only contain other components
-
-### Hybrid Assembly Intent
-- **Criteria**: Component has child components AND contains sketches or bodies
-- **Command**: `Fusion.setDocumentExperience xrefAssembly hybridAssembly`
-- **Use Case**: Assemblies that also contain native geometry or construction elements
-
-## Best Practices
-
-### Before Running
-1. **Save your work**: Ensure the active document is saved
-2. **Close other documents**: Close unnecessary documents to avoid confusion
-3. **Check file permissions**: Ensure all component files are writable
-4. **Review options**: Configure the dialog options based on your needs
-5. **Plan for time**: Large assemblies may take significant time to process
-
-### During Execution
-1. **Monitor progress**: Watch the Text Commands window for progress updates
-2. **Don't interrupt**: Allow the command to complete fully to avoid corrupted states
-3. **Check for errors**: Review any error messages that appear
-4. **System resources**: Ensure adequate system memory and disk space
-
-### After Completion
-1. **Review the log**: Check the log file for any issues or warnings
-2. **Verify results**: Spot-check a few components to ensure proper processing
-3. **Test assemblies**: Verify that assembly relationships are maintained
-4. **Check intent**: Confirm design intent was applied correctly if enabled
-
-## Common Use Cases
-
-### Assembly Maintenance
-- When component files have been modified externally
-- After importing updated components from other sources
-- When references need to be refreshed across an assembly
-- Regular cleanup and optimization of assembly files
-
-### Batch Processing
-- Applying consistent visibility settings across all components
-- Hiding construction elements for presentation purposes
-- Applying design intent classification to all components
-- Standardizing component appearance and structure
-
-### Project Preparation
-- Preparing assemblies for sharing or collaboration
-- Cleaning up assemblies before archiving projects
-- Optimizing performance through proper design intent classification
-- Creating presentation-ready assemblies with hidden construction elements
+- Save all open documents before running the command.
+- Close documents that are not part of the assembly to reduce resource contention.
+- Confirm that you have write access to all component files before starting.
+- For very large assemblies, consider processing smaller sub-assemblies separately.
+- Enable **Log Progress** when troubleshooting to capture detailed error information.
+- Use **Skip already saved documents** to resume an interrupted run without reprocessing completed components.
 
 ## Troubleshooting
 
-### Common Issues
+| Symptom | Likely cause | Resolution |
+|---|---|---|
+| "No document references found" error | Active document has no external references | Confirm you are running the command on an assembly with linked components |
+| Component skipped unexpectedly | File is locked or write-protected | Check Hub permissions; ensure no other user has the document open |
+| Incomplete processing after interruption | Session interrupted mid-run | Enable **Skip already saved documents** and re-run |
+| Design intent not applied | Component is read-only | Ensure the document is not locked; review the log for intent-specific errors |
 
-**"No document references found" error**
-- The active document doesn't contain any external references
-- Ensure you're running the command on an assembly with linked components
+## Architecture
 
-**Components not processing**
-- Check file permissions on component files
-- Ensure referenced files are accessible and not locked by other users
-- Review the log file for specific error messages
-- Verify network connectivity for cloud-based projects
+The following diagrams show how the Bottom-Up Update command fits into the Fusion 360 ecosystem and how its internal components interact.
 
-**Incomplete processing**
-- Use "Skip already saved Documents" option to resume from where it left off
-- Check available disk space for temporary files and saves
-- Ensure Fusion 360 has sufficient memory allocation
-- Consider processing smaller sub-assemblies separately
+```mermaid
+C4Context
+  title Bottom-Up Update – System Context
 
-**Design Intent application failures**
-- Ensure components are not locked or read-only
-- Check that the workspace is properly activated
-- Review log file for specific intent application errors
-- Verify component has the expected content (sketches, bodies, children)
+  Person(user, "Design Engineer", "Fusion 360 user performing bulk assembly maintenance")
+  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
+  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  System_Ext(hub, "Autodesk Hub", "Cloud document storage providing reference version data")
+  System_Ext(fs, "Local File System", "Log file output destination")
 
-### Performance Tips
+  Rel(user, addin, "Runs Bottom-Up Update")
+  Rel(addin, fusion, "Traverses assembly DAG; opens, updates, rebuilds, and saves each component document in order")
+  Rel(fusion, hub, "Downloads latest reference versions during updateAllReferences(); saves updated documents")
+  Rel(addin, fs, "Writes timestamped log file")
+```
 
-- Close unnecessary applications to free up system resources
-- Process smaller sub-assemblies separately for very large assemblies
-- Use the skip options strategically to avoid unnecessary processing
-- Enable logging only when needed for debugging (adds processing overhead)
-- Ensure adequate RAM and fast storage for large assembly processing
+```mermaid
+C4Component
+  title Bottom-Up Update – Component View
 
-## Integration
+  Person(user, "Design Engineer")
+  Component(cmd, "bottomupupdate/entry.py", "PowerTools Command", "Registers toolbar button; presents three-tab dialog; orchestrates the full bottom-up update lifecycle")
+  Component(traversal, "traverse_assembly()", "Internal Function", "Recursively builds a nested dictionary representing the full assembly dependency tree")
+  Component(dag_sort, "sort_dag_bottom_up()", "Internal Function", "Topologically sorts the dependency tree so leaves are processed before parents")
+  Component(api_design, "adsk.fusion.Design", "Fusion API", "Provides allComponents, rootComponent, and occurrences for traversal")
+  Component(api_doc, "adsk.core.Document", "Fusion API", "Opened per component for updateAllReferences(), computeAll(), and save()")
+  Component(intent, "Design Intent Logic", "Internal Logic", "Analyzes child occurrences, sketches, and bodies; executes appropriate Fusion text command")
+  Component(logger, "Log Writer", "Internal Function", "Writes timestamped UTF-8 text log to the selected path")
+  System_Ext(hub, "Autodesk Hub", "Stores versioned component documents")
 
-The Bottom-Up Update command integrates with other PowerTools commands:
-- Use after bulk import operations to ensure all references are current
-- Combine with other assembly management tools in workflows
-- Part of larger assembly maintenance and optimization workflows
-- Complements other PowerTools for comprehensive assembly management
+  Rel(user, cmd, "Clicks Bottom-up Update button")
+  Rel(cmd, traversal, "Builds dependency tree from rootComponent.occurrences")
+  Rel(traversal, api_design, "Reads each component's child occurrences")
+  Rel(cmd, dag_sort, "Determines bottom-up processing order")
+  Rel(cmd, api_doc, "Opens each component in turn; calls updateAllReferences and computeAll; saves")
+  Rel(api_doc, hub, "Pulls latest reference versions; pushes saved versions")
+  Rel(cmd, intent, "Applies classification when Apply Design Doc Intent is enabled")
+  Rel(cmd, logger, "Writes event and summary entries")
+```
 
-## Technical Notes
+### Topological sort
 
-### Version Tracking
-- Uses Fusion 360 version information in save comments
-- Tracks processing with current Fusion build version
-- Maintains compatibility across Fusion updates
+The command must process components in an order where every component's dependencies are saved before the component that uses them. It achieves this through a two-phase algorithm.
 
-### Memory Management
-- Clears global variables after each execution
-- Tracks processed documents to avoid duplicates
-- Implements proper cleanup for large assembly processing
+**Phase 1 — Build the dependency tree (`traverse_assembly`)**
 
-### Error Handling
-- Comprehensive exception handling for robust operation
-- Detailed error logging for troubleshooting
-- Graceful recovery from individual component failures
+Starting from the root component, the function walks `component.occurrences` recursively. Each component is stored as a node in a nested dictionary keyed by component name:
 
-For additional help or to report issues, please refer to the main PowerTools documentation or submit an issue on the project repository.
+```
+{
+  "Bracket": {
+    "component": <adsk.fusion.Component>,
+    "children": {
+      "Bushing": { "component": ..., "children": {} },
+      "Pin":     { "component": ..., "children": {} }
+    }
+  },
+  "Frame": { ... }
+}
+```
+
+The result is a directed acyclic graph (DAG) where each node points to its child nodes. Components that appear in multiple sub-assemblies are represented once under the first parent that encounters them; duplicate traversal of the same component name is skipped.
+
+**Phase 2 — Post-order traversal (`sort_dag_bottom_up`)**
+
+The sort walks the DAG using a depth-first, post-order traversal. For any given node it recurses into all children before appending the node itself to the output list. This guarantees that a component only appears in the list *after* all of its dependencies have already been appended.
+
+```
+traverse_dag("Bracket")
+  → traverse_dag("Bushing")  → append "Bushing"
+  → traverse_dag("Pin")      → append "Pin"
+  → append "Bracket"
+```
+
+The final list is the bottom-up processing order. The command iterates it in sequence, opening, updating, and saving each document before moving to the next. The root assembly is excluded from the list and is saved separately at the end after all components have been processed.
+
+**Why post-order matters**
+
+If a parent component is saved before its children are up to date, Fusion 360 resolves the parent's references against the old version of each child. The post-order traversal eliminates this problem: by the time any parent document is opened and saved, every document it depends on has already been updated and saved to the Hub.
+
+---
+
+[Back to PowerTools Assembly](../README.md)

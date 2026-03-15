@@ -1,27 +1,91 @@
 # Assembly Statistics
 
-[Back to Readme](../README.md)
+[Back to PowerTools Assembly](../README.md)
 
-## Description
+The Assembly Statistics command displays a summary of the structure, component counts, and joint configuration of the active Fusion 360 design. Use this command to quickly evaluate the complexity of an assembly without manually inspecting the browser tree.
 
- Basic assembly information on the active document. A dialog box will display:
+## What you can do
 
-- Number of external references
-- Total number of components
-- Total number of unique components (local or eternal)
-- The maximum depth (levels) of sub-assemblies and sub-components
-- Joint details
-  - Total number of joints
-  - Number of each unique joint type
+- View the total number of components in the active assembly, including all nested occurrences.
+- View the total number of unique component definitions (local and external).
+- View the number of external document references.
+- View the number of out-of-date references.
+- View the maximum depth (nesting levels) of the assembly hierarchy.
+- View the number of document contexts in the timeline.
+- View assembly constraints, tangent relationships, and rigid group counts.
+- View joint totals broken down by joint type.
 
-![assembly stats](/docs/assets/assemblystats_001.png)
+## Prerequisites
+
+- A Fusion 360 3D Design must be active.
+- The active document must be saved.
+
+## How to use Assembly Statistics
+
+1. Open the Fusion 360 Design workspace.
+2. On the **Utilities** tab, in the **Tools** panel, select **Assembly Statistics**.
+3. Review the statistics displayed in the dialog.
+4. Select **Close** to dismiss the dialog.
+
+The dialog reports the following values:
+
+| Statistic | Description |
+|---|---|
+| Total component instances | Total number of occurrences across all levels of the assembly |
+| Unique component definitions | Number of distinct component definitions, excluding the root |
+| Out-of-date references | Components whose referenced document has a newer version available |
+| Maximum assembly depth | Number of nesting levels from the root to the deepest component |
+| Document contexts | Number of assembly context entries in the timeline |
+| Assembly constraints | Count of positional constraints on the root component |
+| Tangent relationships | Count of tangent relationships on the root component |
+| Rigid groups | Count of rigid group constraints on the root component |
+| Total joints | All joints defined at the root level |
+| Joints by type | Count per joint type (Rigid, Revolute, Slider, Cylindrical, Pin-Slot, Planar, Ball) |
+
+![Assembly Statistics dialog](assets/assemblystats_001.png)
 
 ## Access
 
-Access to the **Assembly Statistics** command is from the Design Document's **Utilities** tab, In the **Tools** panel.
+The **Assembly Statistics** command is located on the **Utilities** tab, in the **Tools** panel of the Fusion 360 Design workspace.
 
-![access](/docs/assets/assemblystats_002.png)
+![Toolbar access](assets/assemblystats_002.png)
 
-[Back to Readme](../README.md)
+## Architecture
 
-IAM LLC Copyright
+The following diagram shows how the Assembly Statistics command interacts with Fusion 360 and its data model.
+
+```mermaid
+C4Context
+  title Assembly Statistics – System Context
+
+  Person(user, "Design Engineer", "Fusion 360 user reviewing assembly structure")
+  System(addin, "PowerTools Assembly", "Fusion 360 add-in")
+  System_Ext(fusion, "Fusion 360", "Host application and Python API (adsk.core / adsk.fusion)")
+  System_Ext(hub, "Autodesk Hub", "Cloud document storage and version management")
+
+  Rel(user, addin, "Runs Assembly Statistics")
+  Rel(addin, fusion, "Queries component hierarchy, joints, references, and timeline via adsk API and text commands")
+  Rel(fusion, hub, "Resolves document references and version state")
+```
+
+```mermaid
+C4Component
+  title Assembly Statistics – Component View
+
+  Person(user, "Design Engineer")
+  Component(cmd, "assemblystats/entry.py", "PowerTools Command", "Registers button in Utilities > Tools panel and handles command lifecycle")
+  Component(api_design, "adsk.fusion.Design", "Fusion API", "Provides allComponents, rootComponent, assemblyConstraints, joints")
+  Component(api_doc, "adsk.core.Application / Document", "Fusion API", "Provides documentReferences and text command execution")
+  Component(text_cmd, "Component.AnalyseHierarchy", "Fusion Text Command", "Returns assembly depth and instance hierarchy text output")
+
+  Rel(user, cmd, "Clicks Assembly Statistics button")
+  Rel(cmd, api_design, "Reads component counts, joints, and constraints")
+  Rel(cmd, api_doc, "Reads out-of-date references and timeline contexts")
+  Rel(cmd, text_cmd, "Executes to get hierarchy depth and instance data")
+  Rel(cmd, user, "Displays results in modal message dialog")
+```
+
+---
+
+[Back to PowerTools Assembly](../README.md)
+
