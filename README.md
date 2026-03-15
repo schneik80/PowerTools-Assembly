@@ -1,13 +1,8 @@
-# PowerTools Assembly tools for Fusion v1.0
+# PowerTools Assembly tools for Fusion
 
 Make working as a team, cloud data, and with assemblies more productive.
 
 ## Data Workflow
-
-**[Create Assembly From Part](./docs/Assembly%20From.md)**
-
-Create a new assembly with the active design document inserted as the first component.
-
 
 ## Manage Document References
 
