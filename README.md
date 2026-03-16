@@ -1,4 +1,4 @@
-# PowerTools: Assembly for Autodesk Fusion
+# PowerTools: Assembly tools for Autodesk Fusion
 
 PowerTools Assembly is an Autodesk Fusion add-in that provides productivity commands for teams working with multi-component assemblies and cloud-connected design data. It adds commands to the Design workspace toolbar and Quick Access Toolbar (QAT) that reduce the steps required for common assembly management tasks.
 
