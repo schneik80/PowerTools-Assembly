@@ -28,6 +28,8 @@ PANEL_AFTER = config.my_panel_after
 # Resource location for command icons
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
 
+APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent after externalizing
+
 # Holds references to event handlers
 local_handlers = []
 
@@ -115,6 +117,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         "Create Sub-folder — saves components into a new sub-folder named after the active document."
     )
 
+    # Checkbox: apply design intent to externalized documents
+    apply_intent_input = inputs.addBoolValueInput(
+        APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", True
+    )
+    apply_intent_input.tooltip = "Applies design intent (Part, Assembly, or Hybrid) to each externalized document."
+
     futil.add_handler(
         cmd.inputChanged, command_input_changed, local_handlers=local_handlers
     )
@@ -185,8 +193,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
             existing_sub = _find_existing_subfolder(cloud_folder, active_data_file.name)
             target_folder = existing_sub if existing_sub is not None else cloud_folder
 
+        apply_intent: bool = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(APPLY_INTENT_ID)
+        ).value
+
         if externalize_all:
-            _externalize_all(design, target_folder)
+            _externalize_all(design, target_folder, apply_intent)
         else:
             sel_input = adsk.core.SelectionCommandInput.cast(
                 inputs.itemById("occurrence_sel")
@@ -196,7 +208,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 ui.messageBox("No component selected.", CMD_NAME)
                 return
 
-            _externalize_single(sel_input.selection(0).entity, design, target_folder)
+            _externalize_single(sel_input.selection(0).entity, design, target_folder, apply_intent)
 
     except:  # pylint:disable=bare-except
         app.log(f"{CMD_NAME} failed:\n{traceback.format_exc()}")
@@ -264,6 +276,7 @@ def _externalize_single(
     entity,
     design: adsk.fusion.Design,
     target_folder: adsk.core.DataFolder,
+    apply_intent: bool = True,
 ):
     """Externalize a single selected occurrence."""
     if isinstance(entity, adsk.fusion.Occurrence):
@@ -292,7 +305,10 @@ def _externalize_single(
         action = f'saved to "{target_folder.name}"'
 
     occ.deleteMe()
-    root.occurrences.addByInsert(saved_data_file, cached_transform, True)
+    new_occ = root.occurrences.addByInsert(saved_data_file, cached_transform, True)
+
+    if apply_intent:
+        _apply_design_intent(new_occ, comp_name)
 
     ui.messageBox(
         f'"{comp_name}" {action} and re-inserted at its original assembly position.',
@@ -303,6 +319,7 @@ def _externalize_single(
 def _externalize_all(
     design: adsk.fusion.Design,
     target_folder: adsk.core.DataFolder,
+    apply_intent: bool = True,
 ):
     """Externalize every local first-level component in the active assembly."""
     root = design.rootComponent
@@ -352,8 +369,11 @@ def _externalize_all(
                     continue
 
             data["occ"].deleteMe()
-            root.occurrences.addByInsert(saved_data_file, data["transform"], True)
+            new_occ = root.occurrences.addByInsert(saved_data_file, data["transform"], True)
             replaced += 1
+
+            if apply_intent:
+                _apply_design_intent(new_occ, comp_name)
 
         except:  # pylint:disable=bare-except
             app.log(
@@ -380,6 +400,47 @@ def _externalize_all(
     ui.messageBox(
         f"{replaced} of {total} local components were externalized.", CMD_NAME
     )
+
+
+def _apply_design_intent(occ: adsk.fusion.Occurrence, comp_name: str):
+    """Open the externalized document, apply the appropriate design intent, and save."""
+    try:
+        data_file = occ.component.parentDesign.parentDocument.dataFile
+        if data_file is None:
+            return
+
+        doc = app.documents.open(data_file, True)
+        des = adsk.fusion.Design.cast(app.activeProduct)
+        if not des:
+            doc.close(False)
+            return
+
+        root_comp = des.rootComponent
+        if root_comp.occurrences.count == 0:
+            # No children = part
+            intent_type = adsk.fusion.DesignIntentTypes.PartDesignIntentType
+            intent_label = "part"
+        else:
+            sketch_count = root_comp.sketches.count
+            body_count = root_comp.bRepBodies.count
+
+            if sketch_count > 0 or body_count > 0:
+                intent_type = adsk.fusion.DesignIntentTypes.HybridDesignIntentType
+                intent_label = "hybrid assembly"
+            else:
+                intent_type = adsk.fusion.DesignIntentTypes.AssemblyDesignIntentType
+                intent_label = "assembly"
+
+        des.designIntent = intent_type
+        futil.log(f"   {intent_label.capitalize()} intent applied to {comp_name}")
+
+        doc.save("")
+        doc.close(False)
+
+    except Exception as intent_error:
+        futil.log(
+            f"   Failed to apply design intent to {comp_name}: {intent_error}"
+        )
 
 
 # Called when the command is destroyed (dialog closed).
