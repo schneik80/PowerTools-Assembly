@@ -373,8 +373,14 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
     if btn_id in _fusion_btns:
         data_file = _fusion_btns[btn_id]
         try:
+            # End the active command before switching documents.
+            select_cmd = ui.commandDefinitions.itemById("SelectCommand")
+            if select_cmd:
+                select_cmd.execute()
+            else:
+                args.input.parentCommand.doExecute(False)
+            adsk.doEvents()
             app.documents.open(data_file)
-            args.input.parentCommand.doExecute(False)
         except Exception:
             ui.messageBox(
                 "Failed to open document in Fusion:\n{}".format(traceback.format_exc())
