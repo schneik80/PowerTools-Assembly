@@ -27,7 +27,7 @@ The following commands are included in this add-in:
 
 | Command | Category | Location | Description |
 |---|---|---|---|
-| [Document References](./docs/Document%20References.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Tools | Displays a dialog listing all documents related to the active design, organized by relationship type. |
+| [Document References](./docs/Document%20References.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Tools | Displays a dialog listing all documents related to the active design, organized by relationship type, including recursive root assembly detection. |
 | [Reference Manager](./docs/Reference%20Manager.md) | Data Workflow | Quick Access Toolbar | Opens the Fusion Reference Manager dialog directly from the QAT for quick access to reference management. |
 | [Externalize](./docs/Externalize.md) | Data Workflow | Design &rsaquo; PowerTools Assembly panel | Converts local (inline) components into independent cloud documents and re-inserts them at their original positions. |
 | [Get and Update](./docs/Get%20and%20Update.md) | Data Workflow | Quick Access Toolbar | Retrieves the latest versions of all child references and updates all out-of-date assembly contexts in one step. |
@@ -43,6 +43,9 @@ The following commands are included in this add-in:
 ### Document References
 
 **[Document References](./docs/Document%20References.md)** displays a dialog listing all documents related to the active design — including parents, children, drawings, fasteners, and (when using the Related Data add-in) documents created from templates. You can open any listed document directly by selecting the open button next to its name.
+
+- **Roots** — recursively walks the full parent chain to identify top-level root assemblies that have no further parents; deduplicates by file ID, excludes drawings and Related Data documents from the chain, and excludes the active document itself.
+- Thumbnail previews, Open in Fusion, and Open in Browser buttons are available for every section including Roots.
 
 **Requirements:** An Autodesk Fusion 3D Design must be active and saved.
 

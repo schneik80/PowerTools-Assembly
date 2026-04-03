@@ -122,13 +122,92 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         childDataFiles = doc.designDataFile.childReferences
         subString = " ‹+› "
 
-        docParents, docChildren, docDrawings, docRelated, docFasteners = (
+        docParents, docChildren, docDrawings, docRelated, docFasteners, docRoots = (
+            [],
             [],
             [],
             [],
             [],
             [],
         )
+
+        # The special substring that identifies Related Data documents.
+        _related_marker = subString  # " ‹+› "
+        _active_doc_id = doc.designDataFile.id if doc.designDataFile else None
+
+        def _is_drawing(data_file):
+            try:
+                return data_file.fileExtension == "f2d"
+            except Exception:
+                return False
+
+        def _is_related(data_file):
+            try:
+                return _related_marker in data_file.name
+            except Exception:
+                return False
+
+        def _collect_roots(data_file, visited_ids: set, root_ids: set, root_items: list, depth: int = 0):
+            """Recursively walk parent references, collecting files that have no
+            non-drawing, non-related parents as roots.
+
+            visited_ids  — file IDs already expanded (prevents re-traversal).
+            root_ids     — file IDs already added to root_items (prevents duplicates).
+            root_items   — accumulator list of root file-data dicts.
+            depth        — recursion depth for log indentation.
+            """
+            indent = "  " * depth
+            fid = None
+            fname = "?"
+            try:
+                fid = data_file.id
+                fname = data_file.name
+            except Exception:
+                futil.log(f"[Roots]{indent} SKIP — could not read id/name")
+                return
+
+            futil.log(f"[Roots]{indent} Visiting: '{fname}'  id={fid}")
+
+            if fid in visited_ids:
+                futil.log(f"[Roots]{indent} SKIP — already visited: '{fname}'")
+                return
+            visited_ids.add(fid)
+
+            try:
+                parents = data_file.parentReferences
+            except Exception:
+                parents = []
+                futil.log(f"[Roots]{indent} WARNING — parentReferences raised, treating as root: '{fname}'")
+
+            all_parent_names = [getattr(p, "name", "?") for p in (parents or [])]
+            futil.log(f"[Roots]{indent} '{fname}' raw parents ({len(all_parent_names)}): {all_parent_names}")
+
+            # Filter to only meaningful parents (skip drawings and related data).
+            real_parents = []
+            for p in (parents or []):
+                pname = getattr(p, "name", "?")
+                if _is_drawing(p):
+                    futil.log(f"[Roots]{indent} SKIP parent (drawing): '{pname}'")
+                elif _is_related(p):
+                    futil.log(f"[Roots]{indent} SKIP parent (related data): '{pname}'")
+                else:
+                    futil.log(f"[Roots]{indent} KEEP parent: '{pname}'")
+                    real_parents.append(p)
+
+            if not real_parents:
+                # This file has no further real parents → it is a root.
+                if fid == _active_doc_id:
+                    futil.log(f"[Roots]{indent} SKIP — is active document: '{fname}'")
+                elif fid in root_ids:
+                    futil.log(f"[Roots]{indent} SKIP — already in roots list: '{fname}'")
+                else:
+                    futil.log(f"[Roots]{indent} ROOT FOUND: '{fname}'")
+                    root_ids.add(fid)
+                    root_items.append(make_file_data(data_file))
+            else:
+                futil.log(f"[Roots]{indent} '{fname}' has {len(real_parents)} real parent(s) — recursing")
+                for parent in real_parents:
+                    _collect_roots(parent, visited_ids, root_ids, root_items, depth + 1)
 
         # Build a name→component map for all components in the active design
         _comp_by_name = {c.name: c for c in design.allComponents}
@@ -275,6 +354,17 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
             adsk.doEvents
             fd["thumb"] = fetch_thumbnail(fd["file"])
 
+        # Walk the parent chain recursively to find root assemblies.
+        _visited_root: set = set()
+        _root_ids: set = set()
+        for fd in docParents:
+            _collect_roots(fd["file"], _visited_root, _root_ids, docRoots)
+        # Fetch thumbnails for roots.
+        for fd in docRoots:
+            progressBar.showBusy(f"Fetching root thumbnail: {fd['name'][:40]}…", True)
+            adsk.doEvents
+            fd["thumb"] = fetch_thumbnail(fd["file"])
+
         progressBar.hide()
 
         cmd = args.command
@@ -358,6 +448,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                 table.addCommandInput(open_btn, i, 1)
                 table.addCommandInput(web_btn, i, 2)
 
+        _add_table("Roots", docRoots, "roots")
         _add_table("Used In (Parents)", docParents, "parents")
         _add_table("Uses (Children)", docChildren, "children")
         _add_table("Drawings", docDrawings, "drawings")
