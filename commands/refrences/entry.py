@@ -293,13 +293,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
             grp = group.children
 
-            def _set_row_tooltip(input_obj, item_name, thumb_path):
+            def _set_row_tooltip(input_obj, item_name, thumb_path, action_text=None):
+                short_desc = (
+                    f"{action_text}: {item_name}" if action_text else item_name
+                )
                 try:
-                    input_obj.tooltip = item_name
-                except Exception:
-                    pass
-                try:
-                    input_obj.tooltipDescription = item_name
+                    input_obj.tooltip = short_desc
                 except Exception:
                     pass
                 try:
@@ -325,8 +324,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                     open_btn = grp.addBoolValueInput(
                         f"{prefix}_open_{i}", "", False, OPEN_ICON_FOLDER, False
                     )
-                    open_btn.tooltip = "Open this document in Fusion"
-                    _set_row_tooltip(open_btn, item["name"], thumb_path)
+                    _set_row_tooltip(
+                        open_btn,
+                        item["name"],
+                        thumb_path,
+                        "Open in Fusion",
+                    )
                     _fusion_btns[f"{prefix}_open_{i}"] = item["file"]
                 else:
                     open_btn = grp.addTextBoxCommandInput(
@@ -338,8 +341,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                     web_btn = grp.addBoolValueInput(
                         f"{prefix}_web_{i}", "", False, WEB_ICON_FOLDER, False
                     )
-                    web_btn.tooltip = "Open in web browser"
-                    _set_row_tooltip(web_btn, item["name"], thumb_path)
+                    _set_row_tooltip(
+                        web_btn,
+                        item["name"],
+                        thumb_path,
+                        "Open in web browser",
+                    )
                     _browser_btns[f"{prefix}_web_{i}"] = item["url"]
                 else:
                     web_btn = grp.addTextBoxCommandInput(
