@@ -2,6 +2,8 @@ import adsk.core, adsk.fusion
 import os, re, traceback
 import time
 import sys
+import subprocess
+import tempfile
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -29,6 +31,7 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource
 local_handlers = []
 # Set to track document IDs that have already been saved to avoid duplicate processing
 saved = set()
+resume_plan = {}
 
 # Command input IDs
 REBUILD_INPUT_ID = "rebuild_all"  # Checkbox to enable full rebuild of all components
@@ -40,10 +43,12 @@ HIDE_SKETCHES_ID = "hide_sketches"  # Checkbox to hide component sketches
 HIDE_JOINTORIGINS_ID = "hide_jointorigins"  # Checkbox to hide joint origin markers
 HIDE_CANVASES_ID = "hide_canvases"  # Checkbox to hide canvases
 APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent before saving
-PAUSE_TIME_ID = "pause_time"  # Text input for configurable pause time in seconds
+PAUSE_TIME_ID = "pause_time"  # Text input for upload completion poll interval in seconds
 LOG_ENABLE_ID = "enable_log"  # Checkbox to enable progress logging
 LOG_PATH_ID = "log_path"  # Text input for custom log file path
 LOG_BROWSE_ID = "browse_log"  # Button to browse for log file location
+LOG_OPEN_VIEW_ID = "open_log_view"  # Checkbox to auto-open a live log viewer
+RESUME_STATUS_ID = "resume_status"  # Read-only status for resume behavior
 
 
 # Executed when add-in is run.
@@ -112,7 +117,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         args.command.destroy, command_destroy, local_handlers=local_handlers
     )
 
-    global product, design, title
+    global product, design, title, resume_plan
 
     # Get the active Fusion product and cast to Design for manipulation
     product = app.activeProduct
@@ -134,6 +139,28 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Check that the active document has been saved.
     if futil.isSaved() == False:
         return
+
+    resume_plan = {
+        "should_resume": False,
+        "resume_start_index": 0,
+        "last_saved_index": 0,
+        "status_message": "A full run will start.",
+    }
+    try:
+        root_component = design.rootComponent
+        assembly_dict = {}
+        traverse_assembly(root_component, assembly_dict)
+        bottom_up_order = sort_dag_bottom_up(assembly_dict)
+        resume_plan = _analyze_resume_state(
+            _default_temp_log_path(), app.version, bottom_up_order
+        )
+    except Exception as resume_error:
+        resume_plan = {
+            "should_resume": False,
+            "resume_start_index": 0,
+            "last_saved_index": 0,
+            "status_message": f"Resume check failed ({resume_error}). A full run will start.",
+        }
 
     # Build command dialog inputs
     inputs: adsk.core.CommandInputs = args.command.commandInputs
@@ -163,16 +190,31 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     )
 
     apply_intent_input = main_inputs.addBoolValueInput(
-        APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", False
+        APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", True
     )
     apply_intent_input.tooltip = "Applies design intent (Part, Assembly, or Hybrid) to the document's root component."
 
-    # Add pause time input
-    pause_time_input = main_inputs.addStringValueInput(
-        PAUSE_TIME_ID, "Pause after save (seconds)", "4"
+    resume_status_input = main_inputs.addTextBoxCommandInput(
+        RESUME_STATUS_ID,
+        "Run status",
+        resume_plan.get("status_message", "A full run will start."),
+        3,
+        True,
+    )
+    resume_status_input.tooltip = (
+        "Startup check based on temp log, Fusion client version, and current bottom-up list."
+    )
+
+    advanced_group = main_inputs.addGroupCommandInput("advancedGroup", "Advanced")
+    advanced_group.isExpanded = False
+    advanced_inputs = advanced_group.children
+
+    # Add upload poll interval input
+    pause_time_input = advanced_inputs.addStringValueInput(
+        PAUSE_TIME_ID, "Upload check interval (seconds)", "0.5"
     )
     pause_time_input.tooltip = (
-        "Time to pause after saving each document (in seconds). Set to 0 for no pause."
+        "How often to check upload status after each save. Lower values react faster, higher values reduce CPU usage."
     )
 
     # Visualization tab
@@ -223,8 +265,16 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         "Click to browse and select a custom location for the log file."
     )
 
+    open_view = log_inputs.addBoolValueInput(
+        LOG_OPEN_VIEW_ID, "Open live log viewer", True, "", True
+    )
+    open_view.tooltip = (
+        "Automatically opens a system console window to live-monitor log output while the command runs."
+    )
+
     log_path.isEnabled = log_enable.value
     browse_btn.isEnabled = log_enable.value
+    open_view.isEnabled = log_enable.value
 
 
 def traverse_assembly(component, parent_dict):
@@ -516,9 +566,184 @@ def hide_canvases_in_document(document):
         return f"Error hiding canvases: {str(e)}"
 
 
+def wait_for_data_file_future(
+    data_file_future,
+    context_label,
+    poll_interval_seconds=0.5,
+    document=None,
+    pre_save_version=None,
+    timeout_seconds=300,
+    settle_seconds=1.0,
+):
+    """
+    Wait for a Fusion DataFileFuture to complete and report success/failure.
+
+    :param data_file_future: Return value from Document.save (DataFileFuture or bool)
+    :param context_label: Human readable label for logging
+    :param poll_interval_seconds: Sleep interval between completion checks
+    :param document: Document that was saved (optional, used for bool fallback)
+    :param pre_save_version: Data file version before save (optional)
+    :param timeout_seconds: Maximum time to wait before giving up
+    :param settle_seconds: Stable-state settle window when version bump is unavailable
+    :return: (is_success, message)
+    """
+    if data_file_future is None:
+        return False, f"Save failed for {context_label}: save returned no result"
+
+    poll_interval = max(0.05, poll_interval_seconds)
+
+    # Some Fusion builds return bool from Document.save instead of DataFileFuture.
+    if isinstance(data_file_future, bool):
+        if not data_file_future:
+            return False, f"Save failed for {context_label}: save returned False"
+
+        if document is None:
+            return True, f"Save+upload completed for {context_label}"
+
+        start_time = time.time()
+        stable_since = None
+        stable_ready_checks = 0
+        data_file_id = None
+        try:
+            if document.dataFile:
+                data_file_id = document.dataFile.id
+        except Exception:
+            data_file_id = None
+
+        while True:
+            adsk.doEvents()
+
+            current_version = None
+            try:
+                if data_file_id:
+                    refreshed = adsk.core.Application.get().data.findFileById(data_file_id)
+                    if refreshed and hasattr(refreshed, "versionNumber"):
+                        current_version = refreshed.versionNumber
+                if current_version is None and document.dataFile and hasattr(document.dataFile, "versionNumber"):
+                    current_version = document.dataFile.versionNumber
+            except Exception:
+                current_version = None
+
+            # Prefer a version bump when available.
+            if (
+                pre_save_version is not None
+                and current_version is not None
+                and current_version > pre_save_version
+            ):
+                return (
+                    True,
+                    f"Save+upload completed for {context_label} (version {pre_save_version} -> {current_version})",
+                )
+
+            # Fallback signal for builds without version visibility changes.
+            doc_is_saved = getattr(document, "isSaved", None)
+            doc_is_modified = getattr(document, "isModified", None)
+            if doc_is_saved is True and doc_is_modified is False:
+                stable_ready_checks += 1
+                if stable_since is None:
+                    stable_since = time.time()
+                if stable_ready_checks >= 3 and (time.time() - stable_since) >= settle_seconds:
+                    return True, f"Save+upload completed for {context_label}"
+            else:
+                stable_ready_checks = 0
+                stable_since = None
+
+            if timeout_seconds > 0 and (time.time() - start_time) >= timeout_seconds:
+                return (
+                    False,
+                    f"Save wait timed out for {context_label} after {timeout_seconds} seconds",
+                )
+
+            time.sleep(poll_interval)
+
+    if not hasattr(data_file_future, "isComplete"):
+        return (
+            False,
+            f"Save failed for {context_label}: unsupported save result type {type(data_file_future).__name__}",
+        )
+
+    start_time = time.time()
+    while not data_file_future.isComplete:
+        adsk.doEvents()
+        if timeout_seconds > 0 and (time.time() - start_time) >= timeout_seconds:
+            return (
+                False,
+                f"Save wait timed out for {context_label} after {timeout_seconds} seconds",
+            )
+        time.sleep(poll_interval)
+
+    if data_file_future.error:
+        error_description = getattr(
+            data_file_future, "errorDescription", "Unknown upload error"
+        )
+        return False, f"Save failed for {context_label}: {error_description}"
+
+    return True, f"Save+upload completed for {context_label}"
+
+
+def execute_command_with_timeout(
+    command_definition,
+    command_label,
+    poll_interval_seconds=0.1,
+    timeout_seconds=120,
+):
+    """
+    Execute a Fusion command definition with polling and timeout protection.
+
+    :return: (is_success, message)
+    """
+    if command_definition is None:
+        return False, f"{command_label} not found"
+
+    poll_interval = max(0.05, poll_interval_seconds)
+    start_time = time.time()
+    while True:
+        if command_definition.execute():
+            return True, f"{command_label} executed successfully"
+
+        adsk.doEvents()
+        if timeout_seconds > 0 and (time.time() - start_time) >= timeout_seconds:
+            return (
+                False,
+                f"{command_label} timed out after {timeout_seconds} seconds",
+            )
+        time.sleep(poll_interval)
+
+
+def open_live_log_viewer(log_file_path):
+    """
+    Open a platform-native live log viewer for the given file.
+
+    macOS: Console.app via `open -a Console <path>` — natively follows live log files.
+    Windows: PowerShell + Get-Content -Wait
+    """
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-a", "Console", log_file_path])
+            return True, "Opened live log viewer in Console.app"
+
+        if sys.platform == "win32":
+            command = f'Get-Content -Path "{log_file_path}" -Wait'
+            subprocess.Popen(
+                [
+                    "powershell",
+                    "-NoExit",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    command,
+                ]
+            )
+            return True, "Opened live log viewer in PowerShell"
+
+        return False, "Live log viewer auto-open is currently supported on macOS and Windows only"
+    except Exception as e:
+        return False, f"Failed to open live log viewer: {e}"
+
+
 def command_execute(args: adsk.core.CommandEventArgs):
     # ...existing code...
-    global product, design, title, saved
+    global product, design, title, saved, resume_plan
     from datetime import datetime
 
     app = adsk.core.Application.get()
@@ -546,6 +771,25 @@ def command_execute(args: adsk.core.CommandEventArgs):
             ui.messageBox("No active Fusion design")
             return
 
+        # Keep the starting/top document open throughout command execution.
+        top_document = app.activeDocument
+        top_document_id = None
+        try:
+            if top_document and top_document.dataFile:
+                top_document_id = top_document.dataFile.id
+        except Exception:
+            top_document_id = None
+
+        def is_top_document(doc):
+            if not doc:
+                return False
+            if doc == top_document:
+                return True
+            try:
+                return bool(top_document_id and doc.dataFile and doc.dataFile.id == top_document_id)
+            except Exception:
+                return False
+
         # Read dialog values from user inputs
         inputs: adsk.core.CommandInputs = args.command.commandInputs
         skip_standard = adsk.core.BoolValueCommandInput.cast(
@@ -556,6 +800,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
         ).value
         create_log = adsk.core.BoolValueCommandInput.cast(
             inputs.itemById(LOG_ENABLE_ID)
+        ).value
+        open_log_view = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(LOG_OPEN_VIEW_ID)
         ).value
         log_path_val = adsk.core.StringValueCommandInput.cast(
             inputs.itemById(LOG_PATH_ID)
@@ -579,7 +826,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             inputs.itemById(HIDE_CANVASES_ID)
         ).value
 
-        # Read and validate pause time
+        # Read and validate upload poll interval
         pause_time_input = inputs.itemById(PAUSE_TIME_ID)
         if pause_time_input:
             pause_time_str = adsk.core.StringValueCommandInput.cast(
@@ -588,22 +835,23 @@ def command_execute(args: adsk.core.CommandEventArgs):
             try:
                 pause_time = float(pause_time_str)
                 if pause_time < 0:
-                    pause_time = 0  # Ensure no negative values
+                    pause_time = 0.5
             except (ValueError, TypeError):
-                pause_time = 4.0  # Default to 4 seconds if invalid input
+                pause_time = 0.5
                 futil.log(
-                    f"Invalid pause time '{pause_time_str}', using default 4 seconds"
+                    f"Invalid upload check interval '{pause_time_str}', using default 0.5 seconds"
                 )
                 write_log_entry(
-                    f"Invalid pause time '{pause_time_str}', using default 4 seconds"
+                    f"Invalid upload check interval '{pause_time_str}', using default 0.5 seconds"
                 )
         else:
-            pause_time = 4.0  # Default if input not found
-            futil.log(f"Pause time input not found, using default 4 seconds")
-            write_log_entry(f"Pause time input not found, using default 4 seconds")
-
-        # Initialize logging variables
-        saved_doc_count = 0  # Track how many documents were actually saved
+            pause_time = 0.5
+            futil.log(
+                "Upload check interval input not found, using default 0.5 seconds"
+            )
+            write_log_entry(
+                "Upload check interval input not found, using default 0.5 seconds"
+            )
 
         # Build the assembly structure and determine processing order
         root_component = design.rootComponent
@@ -612,8 +860,30 @@ def command_execute(args: adsk.core.CommandEventArgs):
         bottom_up_order = sort_dag_bottom_up(assembly_dict)  # Sort for dependency order
 
         docCount = len(bottom_up_order)
+        default_temp_log_path = _default_temp_log_path()
+        resume_info = _analyze_resume_state(
+            default_temp_log_path, appVersionBuild, bottom_up_order
+        )
+        if resume_info.get("completed_successfully") and resume_info.get("log_exists"):
+            try:
+                with open(default_temp_log_path, "w", encoding="utf-8"):
+                    pass
+            except Exception as clear_error:
+                futil.log(f"Failed to clear previous completed log: {clear_error}")
+        resume_plan = resume_info
+        resume_start_index = max(
+            0, min(resume_info.get("resume_start_index", 0), docCount)
+        )
+        saved_doc_count = (
+            max(resume_info.get("last_saved_index", 0), 0)
+            if resume_info.get("should_resume")
+            else 0
+        )
+
         futil.log(f"Bottom-up order: {bottom_up_order}")
         write_log_entry(f"Bottom-up order: {bottom_up_order}")
+        futil.log(resume_info.get("status_message", "A full run will start."))
+        write_log_entry(resume_info.get("status_message", "A full run will start."))
         if docCount == 0:
             ui.messageBox("No components found in the assembly.")
             return
@@ -623,31 +893,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
         # Set up logging if enabled
         if create_log:
             doc = app.activeDocument
-            base_name = "assembly_log"
             if log_path_val:  # Use custom path if provided
                 file_path = log_path_val
             else:
-                # Generate default log filename based on document name
-                if doc and doc.dataFile:
-                    base_name = doc.dataFile.name
-                elif doc and doc.name:
-                    base_name = doc.name
-                # Clean filename for filesystem compatibility
-                base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
-                if not base_name.lower().endswith(".log"):
-                    base_name += ".log"
-                # Default location is user Documents folder
-                if sys.platform == "win32":
-                    documents_folder = os.path.join(
-                        os.environ.get("USERPROFILE", os.path.expanduser("~")),
-                        "Documents",
-                    )
-                else:
-                    documents_folder = os.path.expanduser("~/Documents")
-                file_path = os.path.join(documents_folder, base_name)
+                file_path = default_temp_log_path
             # Write initial log info at start
             try:
-                with open(file_path, "w", encoding="utf-8") as fh:
+                log_mode = "a" if resume_info.get("should_resume") else "w"
+                with open(file_path, log_mode, encoding="utf-8") as fh:
+                    if log_mode == "a":
+                        fh.write("\n----- Resume attempt -----\n")
                     parent_project_name = None
                     doc_id = None
                     try:
@@ -661,19 +916,32 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     except Exception:
                         parent_project_name = None
                         doc_id = None
+                    fh.write(f"Fusion client version: {appVersionBuild}\n")
                     fh.write(f"Active Document Parent Project: {parent_project_name}\n")
                     fh.write(f"Active Document ID: {doc_id}\n")
                     fh.write("Command Options:\n")
                     fh.write(f"  Rebuild all: {rebuild_all}\n")
                     fh.write(f"  Create log file: {create_log}\n")
+                    fh.write(f"  Open live log viewer: {open_log_view}\n")
                     fh.write(f"  Skip standard components: {skip_standard}\n")
-                    fh.write(f"  Pause time after save: {pause_time} seconds\n")
+                    fh.write(f"  Upload check interval: {pause_time} seconds\n")
                     fh.write(f"  Log file path: {file_path}\n")
+                    fh.write(
+                        f"  Resume requested: {resume_info.get('should_resume', False)}\n"
+                    )
+                    fh.write(
+                        f"  Resume start index: {resume_start_index}\n"
+                    )
                     fh.write("\nBottom-up order:\n")
                     fh.write("\n".join(bottom_up_order))
                     fh.write("\n\nDocument save log:\n")
             except Exception as log_e:
                 futil.log(f"Failed to write initial log: {log_e}")
+
+            if open_log_view and file_path:
+                _, open_msg = open_live_log_viewer(file_path)
+                futil.log(open_msg)
+                write_log_entry(open_msg)
 
         # Initialize progress bar for document processing
         progress_bar = ui.createProgressDialog()
@@ -682,20 +950,22 @@ def command_execute(args: adsk.core.CommandEventArgs):
         progress_bar.isCancelButtonShown = True
         progress_bar.maximumValue = docCount
         progress_bar.minimumValue = 0
-        progress_bar.progressValue = 0
+        progress_bar.progressValue = resume_start_index
         progress_bar.show(
             "Bottom-up Update Progress",
-            "Preparing to update components...",
-            0,
+            "Resuming from checkpoint..."
+            if resume_info.get("should_resume")
+            else "Preparing to update components...",
+            resume_start_index,
             docCount,
             1,
         )
 
         # Counter for progress tracking
-        processed_count = 0
+        processed_count = resume_start_index
 
         # Process each component in bottom-up dependency order
-        for component_name in bottom_up_order:
+        for component_name in bottom_up_order[resume_start_index:]:
             if component_name == "RootComponent":  # Skip the root assembly itself
                 processed_count += 1
                 progress_bar.progressValue = processed_count
@@ -742,7 +1012,13 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 continue
 
             # Skip already saved components if option is enabled
-            if skip_saved and app.activeDocument.version == app.version:
+            target_doc_version = None
+            try:
+                target_doc_version = component.parentDesign.parentDocument.version
+            except Exception:
+                target_doc_version = None
+
+            if skip_saved and target_doc_version == appVersionBuild:
                 log_entry = f"Skipping already saved component: {component_name}"
                 futil.log(log_entry)
                 write_log_entry(log_entry)
@@ -921,21 +1197,48 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
             # Save the document with timestamp
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            app.activeDocument.save(
+            active_doc = app.activeDocument
+            pre_save_version = None
+            try:
+                if active_doc.dataFile and hasattr(active_doc.dataFile, "versionNumber"):
+                    pre_save_version = active_doc.dataFile.versionNumber
+            except Exception:
+                pre_save_version = None
+
+            data_file_future = active_doc.save(
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
 
-            app.activeDocument.close(True)  # Close after saving
+            save_ok, save_msg = wait_for_data_file_future(
+                data_file_future,
+                component_name,
+                pause_time,
+                document=active_doc,
+                pre_save_version=pre_save_version,
+            )
+            futil.log(f"   {save_msg}")
+            write_log_entry(f"   {save_msg}")
+            if not save_ok:
+                try:
+                    if not is_top_document(active_doc):
+                        active_doc.close(False)
+                except Exception:
+                    pass
+                continue
+
+            if not is_top_document(active_doc):
+                active_doc.close(False)  # Already saved, avoid triggering another save cycle
             log_entry = f"   {component_name} saved - [{timestamp}]"
             futil.log(log_entry)
             write_log_entry(log_entry)
             saved_doc_count += 1  # Increment counter for completed saves
 
-            # Add configurable pause after saving
-            if pause_time > 0:
-                futil.log(f"   Pausing for {pause_time} seconds...")
-                write_log_entry(f"   Pausing for {pause_time} seconds...")
-                time.sleep(pause_time)
+            checkpoint_entry = (
+                f"CHECKPOINT|SAVE_UPLOAD_COMPLETE|component={component_name}|"
+                f"saved_index={saved_doc_count}|total={docCount}|timestamp={timestamp}"
+            )
+            futil.log(checkpoint_entry)
+            write_log_entry(checkpoint_entry)
 
             # Add progress separator
             progress_msg = (
@@ -957,26 +1260,65 @@ def command_execute(args: adsk.core.CommandEventArgs):
         write_log_entry("Executing GetAllLatestCmd...")
         cmdDefs = ui.commandDefinitions
         cmdGet = cmdDefs.itemById("GetAllLatestCmd")  # Get all latest command
-        while not cmdGet.execute():
-            adsk.doEvents()
-            time.sleep(0.1)  # Optional: Add a small delay to observe the update
+        get_all_ok, get_all_msg = execute_command_with_timeout(
+            cmdGet, "GetAllLatestCmd", poll_interval_seconds=0.1, timeout_seconds=120
+        )
+        futil.log(get_all_msg)
+        write_log_entry(get_all_msg)
+        if not get_all_ok:
+            raise RuntimeError(get_all_msg)
+
         futil.log("Executing ContextUpdateAllFromParentCmd...")
         write_log_entry("Executing ContextUpdateAllFromParentCmd...")
         progress_bar.message = "Updating all references from parent..."
         cmdUpdate = cmdDefs.itemById(
             "ContextUpdateAllFromParentCmd"
         )  # Update all from parent
-        while not cmdUpdate.execute():
-            adsk.doEvents()
-            time.sleep(0.1)  # Optional: Add a small delay to observe the update
+        update_ok, update_msg = execute_command_with_timeout(
+            cmdUpdate,
+            "ContextUpdateAllFromParentCmd",
+            poll_interval_seconds=0.1,
+            timeout_seconds=120,
+        )
+        futil.log(update_msg)
+        write_log_entry(update_msg)
+        if not update_ok:
+            raise RuntimeError(update_msg)
 
         # Save the active document after updating references
         progress_bar.message = "Saving main assembly document..."
         futil.log("Saving active document after updating references...")
         write_log_entry("Saving active document after updating references...")
-        app.activeDocument.save(
+        main_doc = app.activeDocument
+        main_pre_save_version = None
+        try:
+            if main_doc.dataFile and hasattr(main_doc.dataFile, "versionNumber"):
+                main_pre_save_version = main_doc.dataFile.versionNumber
+        except Exception:
+            main_pre_save_version = None
+
+        final_save_future = main_doc.save(
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
         )
+        final_save_ok, final_save_msg = wait_for_data_file_future(
+            final_save_future,
+            "main assembly",
+            pause_time,
+            document=main_doc,
+            pre_save_version=main_pre_save_version,
+        )
+        futil.log(final_save_msg)
+        write_log_entry(final_save_msg)
+        if not final_save_ok:
+            raise RuntimeError(final_save_msg)
+
+        final_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        final_checkpoint_entry = (
+            "CHECKPOINT|SAVE_UPLOAD_COMPLETE|component=main assembly|"
+            f"saved_index={saved_doc_count}|total={docCount}|timestamp={final_timestamp}"
+        )
+        futil.log(final_checkpoint_entry)
+        write_log_entry(final_checkpoint_entry)
 
         # Hide the progress bar
         progress_bar.hide()
@@ -1004,6 +1346,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         # Clear global variables for next run
         saved.clear()  # Clear the set of processed document IDs
+        resume_plan = {}
         product = None
         design = None
         title = None
@@ -1023,6 +1366,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         # Clear global variables even on failure to ensure clean state for next run
         saved.clear()
+        resume_plan = {}
         product = None
         design = None
         title = None
@@ -1034,9 +1378,10 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
-    global local_handlers, saved, product, design, title
+    global local_handlers, saved, product, design, title, resume_plan
     local_handlers = []
     saved.clear()  # Clear the set of processed document IDs
+    resume_plan = {}
     product = None
     design = None
     title = None
@@ -1059,6 +1404,161 @@ def _propose_default_log_filename() -> str:
     return base_name
 
 
+def _default_log_directory() -> str:
+    """Return the default directory for log files based on the current OS."""
+    if sys.platform in ("darwin", "win32"):
+        return tempfile.gettempdir()
+    return os.path.expanduser("~/Documents")
+
+
+def _default_temp_log_path() -> str:
+    """Return the default log path used for auto logging in this command."""
+    app = adsk.core.Application.get()
+    doc = app.activeDocument
+    base_name = "assembly_log"
+    if doc and doc.dataFile:
+        base_name = doc.dataFile.name
+    elif doc and doc.name:
+        base_name = doc.name
+    base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
+    if not base_name.lower().endswith(".log"):
+        base_name += ".log"
+    return os.path.join(_default_log_directory(), base_name)
+
+
+def _extract_latest_bottom_up_order(log_lines):
+    """Extract the most recent Bottom-up order section from a log file."""
+    marker_indexes = [
+        i for i, line in enumerate(log_lines) if line.strip() == "Bottom-up order:"
+    ]
+    if not marker_indexes:
+        return []
+
+    start_idx = marker_indexes[-1] + 1
+    order = []
+    for line in log_lines[start_idx:]:
+        value = line.strip()
+        if not value or value == "Document save log:":
+            break
+        order.append(value)
+    return order
+
+
+def _extract_last_component_checkpoint(log_lines):
+    """Return the last component checkpoint tuple (component_name, saved_index)."""
+    last_component = None
+    last_saved_index = 0
+
+    for line in log_lines:
+        line = line.strip()
+        if not line.startswith("CHECKPOINT|SAVE_UPLOAD_COMPLETE|"):
+            continue
+        parts = line.split("|")
+        fields = {}
+        for part in parts[2:]:
+            if "=" not in part:
+                continue
+            k, v = part.split("=", 1)
+            fields[k] = v
+
+        component = fields.get("component")
+        if not component or component == "main assembly":
+            continue
+
+        try:
+            saved_index = int(fields.get("saved_index", "0"))
+        except ValueError:
+            saved_index = 0
+
+        last_component = component
+        last_saved_index = saved_index
+
+    return last_component, last_saved_index
+
+
+def _analyze_resume_state(log_path, fusion_client_version, current_bottom_up_order):
+    """Inspect an existing log and return whether this run should resume."""
+    result = {
+        "log_exists": False,
+        "matches_version": False,
+        "completed_successfully": False,
+        "dag_matches": False,
+        "should_resume": False,
+        "resume_component": None,
+        "resume_start_index": 0,
+        "last_saved_index": 0,
+        "clear_log": False,
+        "status_message": "No previous log found. A full run will start.",
+    }
+
+    if not log_path or not os.path.exists(log_path):
+        return result
+
+    result["log_exists"] = True
+    try:
+        with open(log_path, "r", encoding="utf-8") as fh:
+            log_lines = fh.read().splitlines()
+    except Exception as read_error:
+        result["status_message"] = (
+            f"Found previous log but could not read it ({read_error}). A full run will start."
+        )
+        return result
+
+    version_line = next(
+        (line for line in log_lines if line.startswith("Fusion client version:")), None
+    )
+    logged_version = ""
+    if version_line:
+        logged_version = version_line.split(":", 1)[1].strip()
+
+    if logged_version == fusion_client_version:
+        result["matches_version"] = True
+    else:
+        result["status_message"] = (
+            "Previous temp log is from a different Fusion client version. "
+            "A full run will start."
+        )
+        return result
+
+    logged_order = _extract_latest_bottom_up_order(log_lines)
+    result["dag_matches"] = logged_order == current_bottom_up_order
+    result["completed_successfully"] = any(
+        "Bottom-up Update completed successfully" in line for line in log_lines
+    )
+
+    if result["completed_successfully"]:
+        result["clear_log"] = True
+        result["status_message"] = (
+            "Previous run completed successfully. Log will be reset for a new run."
+        )
+        return result
+
+    if not result["dag_matches"]:
+        result["status_message"] = (
+            "Previous run did not complete, but the component save list has changed. "
+            "A full run will start."
+        )
+        return result
+
+    last_component, last_saved_index = _extract_last_component_checkpoint(log_lines)
+    if last_component and last_component in current_bottom_up_order:
+        next_index = current_bottom_up_order.index(last_component) + 1
+        result["resume_component"] = last_component
+        result["resume_start_index"] = min(next_index, len(current_bottom_up_order))
+        result["last_saved_index"] = max(last_saved_index, 0)
+        result["should_resume"] = True
+        result["status_message"] = (
+            f"Resume available. Next component after '{last_component}' will be processed."
+        )
+        return result
+
+    result["status_message"] = (
+        "Previous run did not complete and save list matches. "
+        "No completed checkpoint was found, so processing will restart from the beginning."
+    )
+    return result
+
+
 def on_input_changed(args: adsk.core.InputChangedEventArgs):
     """Handle changes to UI input controls in the command dialog"""
     try:
@@ -1075,9 +1575,13 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
             browse_btn = adsk.core.BoolValueCommandInput.cast(
                 inputs.itemById(LOG_BROWSE_ID)
             )
+            open_view = adsk.core.BoolValueCommandInput.cast(
+                inputs.itemById(LOG_OPEN_VIEW_ID)
+            )
             # Enable/disable log path controls based on logging checkbox
             path_input.isEnabled = enabled
             browse_btn.isEnabled = enabled
+            open_view.isEnabled = enabled
 
         # Handle browse button click for log file selection
         if changed.id == LOG_BROWSE_ID:
@@ -1091,9 +1595,7 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
             dlg.title = "Save log file"
             dlg.filter = "Text files (*.txt);;All Files (*.*)"
             dlg.isMultiSelectEnabled = False
-            dlg.initialDirectory = os.path.expanduser(
-                "~/Documents"
-            )  # Default to Documents
+            dlg.initialDirectory = _default_log_directory()
             dlg.initialFilename = _propose_default_log_filename()
 
             # If user selected a file, update the path input

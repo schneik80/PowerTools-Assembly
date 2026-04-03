@@ -94,7 +94,10 @@ For full usage details, see [Document Refresh](./docs/Document%20Refresh.md).
 - Skips standard library components and already processed documents.
 - Applies appropriate design intent (Part, Assembly, or Hybrid) automatically.
 - Hides various UI elements (origins, joints, sketches, canvases) for cleaner saves.
-- Provides detailed progress logging with timestamps and processing statistics.
+- **Smart upload confirmation** — waits for each component's cloud upload to finish before advancing, instead of using a fixed pause timer.
+- **Resume-aware** — on launch, inspects the temp log to detect an incomplete prior run; if the component list is unchanged it offers to resume from the last confirmed checkpoint.
+- **Live log viewer** — optionally opens Console.app (macOS) or a PowerShell window (Windows) automatically when the command starts so you can monitor progress live.
+- Writes structured checkpoint log entries to the OS temp folder for diagnostics and resume support.
 
 **Requirements:** An Autodesk Fusion 3D Design with external references must be active and saved.
 
