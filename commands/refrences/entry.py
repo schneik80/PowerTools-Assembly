@@ -122,13 +122,68 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         childDataFiles = doc.designDataFile.childReferences
         subString = " ‹+› "
 
-        docParents, docChildren, docDrawings, docRelated, docFasteners = (
+        docParents, docChildren, docDrawings, docRelated, docFasteners, docRoots = (
+            [],
             [],
             [],
             [],
             [],
             [],
         )
+
+        # The special substring that identifies Related Data documents.
+        _related_marker = subString  # " ‹+› "
+        _active_doc_id = doc.designDataFile.id if doc.designDataFile else None
+
+        def _is_drawing(data_file):
+            try:
+                return data_file.fileExtension == "f2d"
+            except Exception:
+                return False
+
+        def _is_related(data_file):
+            try:
+                return _related_marker in data_file.name
+            except Exception:
+                return False
+
+        def _collect_roots(data_file, visited_ids: set, root_ids: set, root_items: list):
+            """Recursively walk parent references, collecting files that have no
+            non-drawing, non-related parents as roots.
+
+            visited_ids  — file IDs already expanded (prevents re-traversal).
+            root_ids     — file IDs already added to root_items (prevents duplicates).
+            root_items   — accumulator list of root file-data dicts.
+            """
+            fid = None
+            try:
+                fid = data_file.id
+            except Exception:
+                return
+
+            if fid in visited_ids:
+                return
+            visited_ids.add(fid)
+
+            try:
+                parents = data_file.parentReferences
+            except Exception:
+                parents = []
+
+            # Filter to only meaningful parents (skip drawings and related data).
+            real_parents = [
+                p for p in (parents or [])
+                if not _is_drawing(p) and not _is_related(p)
+            ]
+
+            if not real_parents:
+                # This file has no further real parents → it is a root.
+                if fid not in root_ids and fid != _active_doc_id:
+                    root_ids.add(fid)
+                    root_items.append(make_file_data(data_file))
+            else:
+                for parent in real_parents:
+                    _collect_roots(parent, visited_ids, root_ids, root_items)
 
         # Build a name→component map for all components in the active design
         _comp_by_name = {c.name: c for c in design.allComponents}
@@ -275,6 +330,17 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
             adsk.doEvents
             fd["thumb"] = fetch_thumbnail(fd["file"])
 
+        # Walk the parent chain recursively to find root assemblies.
+        _visited_root: set = set()
+        _root_ids: set = set()
+        for fd in docParents:
+            _collect_roots(fd["file"], _visited_root, _root_ids, docRoots)
+        # Fetch thumbnails for roots.
+        for fd in docRoots:
+            progressBar.showBusy(f"Fetching root thumbnail: {fd['name'][:40]}…", True)
+            adsk.doEvents
+            fd["thumb"] = fetch_thumbnail(fd["file"])
+
         progressBar.hide()
 
         cmd = args.command
@@ -358,6 +424,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
                 table.addCommandInput(open_btn, i, 1)
                 table.addCommandInput(web_btn, i, 2)
 
+        _add_table("Roots", docRoots, "roots")
         _add_table("Used In (Parents)", docParents, "parents")
         _add_table("Uses (Children)", docChildren, "children")
         _add_table("Drawings", docDrawings, "drawings")
