@@ -140,7 +140,11 @@ This add-in is developed and maintained by IMA LLC.
 
 ## License
 
-This project is released under the [MIT License](LICENSE).
+This project is released under the [GNU General Public License v3.0 or later](LICENSE).
+
+Copyright (C) 2022-2026 IMA LLC.
+
+The vendored library at `lib/fusionAddInUtils` is Autodesk sample code and is distributed under its own license terms; see its source headers for details.
 
 ---
 

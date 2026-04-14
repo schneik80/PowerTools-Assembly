@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 IMA LLC
+
 # Assuming you have not changed the general structure of the template no modification is needed in this file.
 from . import commands
 from .lib import fusionAddInUtils as futil

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 IMA LLC
+
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
