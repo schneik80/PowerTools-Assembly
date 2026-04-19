@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Assembly Builder</title>
+    <link rel="stylesheet" href="drawflow.min.css">
+    <style>
+        /* --- Theme variables --- */
+        :root {
+            /* Dark theme (Fusion dark: #2A3442 bg, #323E50 panels) */
+            --bg-primary: #2A3442;
+            --bg-panel: #323E50;
+            --bg-node: #323E50;
+            --bg-node-root: #4a5568;
+            --bg-input-focus: #1e2a38;
+            --bg-hover: #242E39;
+            --border-color: #4a5568;
+            --border-hover: #0696d7;
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --text-muted: #718096;
+            --accent: #0696d7;
+            --accent-hover: #0aa3e8;
+            --accent-root: #9ca3af;
+            --port-bg: #4a5568;
+            --port-border: #6b7280;
+            --connection-color: #6b7280;
+            --shadow-node: 0 2px 8px rgba(0,0,0,0.4);
+            --btn-bg: #3e4b5e;
+            --btn-text: #ffffff;
+            --btn-border: #4a5568;
+            --btn-hover-border: #0696d7;
+            --btn-success-bg: var(--btn-bg);
+            --btn-success-border: var(--btn-border);
+            --btn-danger-bg: var(--btn-bg);
+            --btn-danger-border: var(--btn-border);
+        }
+
+        body.light {
+            /* Light theme (Fusion light: #f4f4f4 bg, white panels) */
+            --bg-primary: #f4f4f4;
+            --bg-panel: #ffffff;
+            --bg-node: #ffffff;
+            --bg-node-root: #d1d5db;
+            --bg-input-focus: #f0f0f0;
+            --bg-hover: #e8e8e8;
+            --border-color: #d1d5db;
+            --border-hover: #0696d7;
+            --text-primary: #333333;
+            --text-secondary: #555555;
+            --text-muted: #888888;
+            --accent: #0696d7;
+            --accent-hover: #0580b8;
+            --accent-root: #9ca3af;
+            --port-bg: #d1d5db;
+            --port-border: #9ca3af;
+            --connection-color: #9ca3af;
+            --shadow-node: 0 2px 4px rgba(0,0,0,0.1);
+            --btn-bg: #e5e7eb;
+            --btn-text: #333333;
+            --btn-border: #d1d5db;
+            --btn-hover-border: #0696d7;
+            --btn-success-bg: var(--btn-bg);
+            --btn-success-border: var(--btn-border);
+            --btn-danger-bg: var(--btn-bg);
+            --btn-danger-border: var(--btn-border);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Montserrat', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+            z-index: 20;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .toolbar button {
+            background: var(--btn-bg);
+            color: var(--btn-text);
+            border: 1px solid var(--btn-border);
+            padding: 5px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: border 0.15s;
+        }
+        .toolbar button:hover {
+            border: 2px solid var(--btn-hover-border);
+            padding: 4px 13px; /* compensate for thicker border */
+        }
+        .toolbar button.success {
+            background: var(--btn-success-bg);
+            border-color: var(--btn-success-border);
+        }
+        .toolbar button.success:hover {
+            border: 2px solid var(--btn-success-border);
+            padding: 4px 13px;
+        }
+        .toolbar button.danger {
+            background: var(--btn-danger-bg);
+            border-color: var(--btn-danger-border);
+        }
+        .toolbar button.danger:hover {
+            border: 2px solid var(--btn-danger-border);
+            padding: 4px 13px;
+        }
+        .toolbar .spacer { flex: 1; }
+        .toolbar .info { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+        /* Main layout */
+        .main { display: flex; flex: 1; min-height: 0; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 180px;
+            flex-shrink: 0;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border-color);
+            padding: 12px;
+            overflow-y: auto;
+        }
+        .sidebar h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+        .sidebar .node-template {
+            background: var(--bg-node);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent);
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .sidebar .node-template:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+        }
+        .sidebar .node-template .tmpl-type {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .sidebar .node-template .tmpl-name {
+            font-size: 13px;
+            font-weight: 500;
+            margin-top: 2px;
+        }
+
+        /* Drawflow canvas */
+        #drawflow {
+            flex: 1;
+            background: var(--bg-primary);
+        }
+
+        /* Drawflow node overrides */
+        .drawflow .drawflow-node {
+            background: var(--bg-node);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent);
+            border-radius: 6px;
+            color: var(--text-primary);
+            min-width: 160px;
+            min-height: 0;
+            padding: 4px 0;
+            box-shadow: var(--shadow-node);
+        }
+        .drawflow .drawflow-node.selected {
+            background: var(--bg-node);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(6,150,215,0.4);
+        }
+        .drawflow .drawflow-node.is-root.selected {
+            background: var(--bg-node-root);
+        }
+        .drawflow .drawflow-node .drawflow_content_node {
+            padding: 0;
+        }
+        .drawflow .drawflow-node.is-root {
+            border-left: 3px solid var(--accent-root);
+            background: var(--bg-node-root);
+        }
+
+        /* Node inner content */
+        .node-header { padding: 8px 10px 4px; }
+        .node-type {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .node-name-input {
+            display: block;
+            width: 100%;
+            padding: 4px 10px 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: inherit;
+            outline: none;
+            cursor: default;
+        }
+        .node-name-input:focus {
+            background: var(--bg-input-focus);
+            border-radius: 3px;
+            cursor: text;
+        }
+
+        /* Ports — top (input) and bottom (output) */
+        .drawflow .drawflow-node .inputs,
+        .drawflow .drawflow-node .outputs {
+            position: absolute;
+            width: 100%;
+            left: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .drawflow .drawflow-node .inputs { top: -6px; }
+        .drawflow .drawflow-node .outputs { bottom: -12px; top: auto !important; }
+        .drawflow .drawflow-node .input,
+        .drawflow .drawflow-node .output {
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--port-border);
+            background: var(--port-bg);
+            position: relative;
+            left: auto;
+            right: auto;
+            top: auto;
+        }
+        .drawflow .drawflow-node .input:hover,
+        .drawflow .drawflow-node .output:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* Connections */
+        .drawflow .connection .main-path {
+            stroke: var(--connection-color);
+            stroke-width: 2px;
+        }
+        .drawflow .connection .main-path:hover {
+            stroke: var(--accent);
+            stroke-width: 3px;
+        }
+
+        /* Delete button */
+        .drawflow .drawflow-delete {
+            background: #c42b1c;
+            color: #fff;
+            border: none;
+            font-size: 12px;
+        }
+
+        /* Hide scrollbars in drawflow */
+        .drawflow::-webkit-scrollbar { display: none; }
+        .drawflow { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+
+<div class="toolbar">
+    <span class="info" id="statusInfo">0 nodes</span>
+    <div class="spacer"></div>
+    <button class="secondary" onclick="editor.zoom_out()">-</button>
+    <span class="info" id="zoomLevel">100%</span>
+    <button class="secondary" onclick="editor.zoom_in()">+</button>
+    <button onclick="fitToView()">Fit</button>
+    <button class="danger" onclick="clearAll()">Clear All</button>
+    <button class="success" onclick="createAssembly()">Create Assembly</button>
+</div>
+
+<div class="main">
+    <div class="sidebar">
+        <h3>Click to Add</h3>
+        <div class="node-template" data-type="assembly" onclick="addNodeFromSidebar('assembly')">
+            <div class="tmpl-type">Assembly</div>
+            <div class="tmpl-name">New Assembly</div>
+        </div>
+        <div class="node-template" data-type="part" onclick="addNodeFromSidebar('part')">
+            <div class="tmpl-type">Part</div>
+            <div class="tmpl-name">New Part</div>
+        </div>
+        <div class="node-template" data-type="hybrid" onclick="addNodeFromSidebar('hybrid')">
+            <div class="tmpl-type">Hybrid</div>
+            <div class="tmpl-name">New Hybrid</div>
+        </div>
+    </div>
+    <div id="drawflow"></div>
+</div>
+
+<script src="drawflow.min.js"></script>
+<script>
+(function() {
+    var rootDocName = 'Untitled';
+    var rootNodeId = null;
+
+    // --- Drawflow init ---
+    var container = document.getElementById('drawflow');
+    window.editor = new Drawflow(container);
+    editor.reroute = true;
+    editor.reroute_fix_curvature = true;
+
+    // Override connection path to draw vertical curves (top-to-bottom flow)
+    editor.createCurvature = function(start_pos_x, start_pos_y, end_pos_x, end_pos_y, curvature_value, type) {
+        var cy = Math.abs(end_pos_y - start_pos_y) * curvature_value;
+        return ' M ' + start_pos_x + ' ' + start_pos_y +
+               ' C ' + start_pos_x + ' ' + (start_pos_y + cy) +
+               ' ' + end_pos_x + ' ' + (end_pos_y - cy) +
+               ' ' + end_pos_x + ' ' + end_pos_y;
+    };
+
+    editor.start();
+
+    // --- Node templates ---
+    var nodeTypes = {
+        root: { type: 'Root Assembly', defaultName: 'Untitled', inputs: 0, outputs: 1, className: 'is-root' },
+        assembly: { type: 'Assembly', defaultName: 'New Assembly', inputs: 1, outputs: 1, className: '' },
+        part: { type: 'Part', defaultName: 'New Part', inputs: 1, outputs: 0, className: '' },
+        hybrid: { type: 'Hybrid', defaultName: 'New Hybrid', inputs: 1, outputs: 1, className: '' }
+    };
+
+    function nodeHtml(typeKey, name) {
+        var t = nodeTypes[typeKey];
+        return '<div class="node-header"><span class="node-type">' + escapeHtml(t.type) + '</span></div>' +
+               '<input class="node-name-input" type="text" df-name value="' + escapeHtml(name) + '" ' +
+               'readonly onfocus="this.removeAttribute(\'readonly\')" onblur="this.setAttribute(\'readonly\',\'\')">';
+    }
+
+    function addNode(typeKey, x, y, name) {
+        var t = nodeTypes[typeKey];
+        var n = name || t.defaultName;
+        return editor.addNode(typeKey, t.inputs, t.outputs, x, y, t.className, { name: n }, nodeHtml(typeKey, n));
+    }
+
+    // --- Root node ---
+    function createRoot() {
+        var x = (container.offsetWidth / 2) - 80;
+        rootNodeId = addNode('root', x, 40, rootDocName);
+        updateStatus();
+    }
+    createRoot();
+
+    // --- Click-to-add from sidebar ---
+    var addCounter = 0;
+    window.addNodeFromSidebar = function(typeKey) {
+        if (!typeKey || !nodeTypes[typeKey]) return;
+        addCounter++;
+        var baseX = (container.offsetWidth / 2 - 80) * (1 / editor.zoom) - (editor.canvas_x * (1 / editor.zoom));
+        var baseY = 150 * (1 / editor.zoom) - (editor.canvas_y * (1 / editor.zoom));
+        var x = baseX + ((addCounter % 3) - 1) * 60;
+        var y = baseY + Math.floor(addCounter / 3) * 100;
+        addNode(typeKey, x, y);
+        updateStatus();
+    };
+
+    // --- Events ---
+    editor.on('nodeCreated', function() { updateStatus(); });
+    editor.on('nodeRemoved', function(id) {
+        if (id === rootNodeId) {
+            setTimeout(function() { createRoot(); }, 0);
+        }
+        updateStatus();
+    });
+    editor.on('zoom', function(zoom) {
+        document.getElementById('zoomLevel').textContent = Math.round(zoom * 100) + '%';
+    });
+
+    // Double-click to focus name input
+    container.addEventListener('dblclick', function(e) {
+        var input = e.target.closest('.node-name-input');
+        if (input) {
+            input.removeAttribute('readonly');
+            input.focus();
+            input.select();
+        }
+    });
+
+    // --- Toolbar actions ---
+    window.fitToView = function() {
+        var data = editor.export();
+        var module = data.drawflow.Home.data;
+        var keys = Object.keys(module);
+        if (keys.length === 0) return;
+
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        keys.forEach(function(k) {
+            var n = module[k];
+            minX = Math.min(minX, n.pos_x);
+            minY = Math.min(minY, n.pos_y);
+            maxX = Math.max(maxX, n.pos_x + 180);
+            maxY = Math.max(maxY, n.pos_y + 60);
+        });
+
+        var pad = 60;
+        var contentW = maxX - minX + pad * 2;
+        var contentH = maxY - minY + pad * 2;
+        var wrapW = container.offsetWidth;
+        var wrapH = container.offsetHeight;
+
+        var scale = Math.min(wrapW / contentW, wrapH / contentH, 1.0);
+        scale = Math.max(editor.zoom_min, Math.min(editor.zoom_max, scale));
+
+        var cx = (minX + maxX) / 2;
+        var cy = (minY + maxY) / 2;
+
+        editor.zoom = scale;
+        editor.canvas_x = (wrapW / 2) - cx * scale;
+        editor.canvas_y = (wrapH / 2) - cy * scale;
+
+        var precanvas = container.querySelector('.drawflow');
+        if (precanvas) {
+            precanvas.style.transform = 'translate(' + editor.canvas_x + 'px, ' + editor.canvas_y + 'px) scale(' + editor.zoom + ')';
+        }
+        document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+    };
+
+    window.clearAll = function() {
+        editor.clear();
+        rootNodeId = null;
+        addCounter = 0;
+        createRoot();
+    };
+
+    window.createAssembly = function() {
+        var graphData = editor.export();
+        var nodes = graphData.drawflow.Home.data;
+        var nodeCount = Object.keys(nodes).length;
+        if (nodeCount < 2) {
+            alert('Add at least one child node before creating the assembly.');
+            return;
+        }
+        try {
+            adsk.fusionSendData('createAssembly', JSON.stringify(graphData)).then(function(result) {
+                if (result && result !== 'OK') {
+                    alert(result);
+                }
+            });
+        } catch (e) {
+            console.log('createAssembly graph:', JSON.stringify(graphData, null, 2));
+            alert('Not running inside Fusion palette. Graph logged to console.');
+        }
+    };
+
+    function updateStatus() {
+        var data = editor.export();
+        var count = Object.keys(data.drawflow.Home.data).length;
+        document.getElementById('statusInfo').textContent = count === 1 ? '1 node' : count + ' nodes';
+    }
+
+    function escapeHtml(text) {
+        var d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    // --- Fusion bridge ---
+    window.fusionJavaScriptHandler = {
+        handle: function(action, data) {
+            try {
+                if (action === 'setDocumentName') {
+                    rootDocName = data;
+                    if (rootNodeId) {
+                        var el = container.querySelector('#node-' + rootNodeId + ' .node-name-input');
+                        if (el) el.value = data;
+                    }
+                } else if (action === 'setTheme') {
+                    // data is 'dark' or 'light'
+                    if (data === 'light') {
+                        document.body.classList.add('light');
+                    } else {
+                        document.body.classList.remove('light');
+                    }
+                }
+            } catch (e) { console.log(e); }
+            return 'OK';
+        }
+    };
+})();
+</script>
+</body>
+</html>

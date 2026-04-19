@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2022-2026 IMA LLC
 
+from .assemblybuilder import entry as assemblybuilder
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
@@ -12,6 +13,7 @@ from .refresh import entry as refresh
 
 # Fusion will automatically call the start() and stop() functions.
 commands = [
+    assemblybuilder,
     assemblystats,
     getandupdate,
     bottomupupdate,

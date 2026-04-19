@@ -34,6 +34,7 @@ The following commands are included in this add-in:
 | [Document Refresh](./docs/Document%20Refresh.md) | Data Workflow | QAT &rsaquo; File dropdown | Closes and reopens the active document to load the latest version from the Hub. |
 | [Bottom-Up Update](./docs/Bottom-Up%20Update.md) | Data Workflow | Design &rsaquo; PowerTools Assembly panel | Saves and updates all references in the open assembly from the bottom up, processing components in dependency order. |
 | [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
+| [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Visual node editor for designing an assembly hierarchy on a new, empty document, then generating every external component with the correct design intent in one step. |
 | [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
 
 ---
@@ -121,6 +122,20 @@ For full usage details, see [Assembly Statistics](./docs/Assembly%20Statistics.m
 ---
 
 ## Productivity commands
+
+### Assembly Builder
+
+**[Assembly Builder](./docs/Assembly%20Builder.md)** opens a visual node editor (powered by [Drawflow](https://github.com/jerosoler/Drawflow)) that lets you plan an assembly hierarchy before any components exist, then generates every external component in one step with the correct design intent applied automatically.
+
+- Add **Assembly**, **Part**, and **Hybrid** nodes by clicking them in the sidebar.
+- Connect nodes by dragging from parent output ports (bottom) to child input ports (top).
+- Share a single child across multiple parents — the command saves once to establish cloud references and then reuses them via `addByInsert`.
+- Double-click any node to rename it; the name is applied to the generated Fusion component.
+- Built-in zoom, pan, and fit-to-view controls; palette theme follows the Fusion UI theme.
+
+**Requirements:** An active Fusion 3D Design that is new and unsaved, has Assembly or Hybrid design intent, and has no root-level children.
+
+For full usage details, see [Assembly Builder](./docs/Assembly%20Builder.md).
 
 ### Insert STEP File
 

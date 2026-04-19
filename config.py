@@ -19,3 +19,6 @@ my_tab_name = "Power Tools"
 my_panel_id = f"PT_{my_tab_name}"
 my_panel_name = "Power Tools"
 my_panel_after = ""
+
+# Palettes
+assembly_builder_palette_id = f"{COMPANY_NAME.replace(' ', '_')}_{ADDIN_NAME}_assembly_builder_palette"
