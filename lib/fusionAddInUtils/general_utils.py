@@ -9,20 +9,25 @@
 #  AUTODESK, INC. DOES NOT WARRANT THAT THE OPERATION OF THE PROGRAM WILL BE
 #  UNINTERRUPTED OR ERROR FREE.
 
-import os, subprocess
+import os
+import subprocess
+import time
 import traceback
+from contextlib import contextmanager
 import adsk.core
 
 app = adsk.core.Application.get()
 ui = app.userInterface
 
-# Attempt to read DEBUG flag from parent config.
+# Attempt to read DEBUG and PERF_TRACE flags from parent config.
 try:
     from ... import config
 
     DEBUG = config.DEBUG
-except:
+    PERF_TRACE = getattr(config, "PERF_TRACE", False)
+except Exception:
     DEBUG = False
+    PERF_TRACE = False
 
 
 def log(
@@ -100,3 +105,27 @@ def handle_error(name: str, show_message_box: bool = False):
     # If desired you could show an error as a message box.
     if show_message_box:
         ui.messageBox(f"{name}\n{traceback.format_exc()}")
+
+
+@contextmanager
+def perf_timer(label: str, context: str = ""):
+    """Wall-clock timer for diagnosing performance bottlenecks.
+
+    Wraps a block of code and, when config.PERF_TRACE is True, emits a
+    structured [PERF] line to the Fusion Text Command window on exit.
+
+    Usage:
+        with futil.perf_timer("documents.open", "GP._load_from_doc"):
+            params_doc = app.documents.open(data_file, False)
+
+    Has zero runtime cost (no timing overhead, no log write) when PERF_TRACE is False.
+    """
+    if not PERF_TRACE:
+        yield
+        return
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - t0
+        log(f"[PERF] {context:<30} | {label:<35} | {elapsed:.3f} s", force_console=True)

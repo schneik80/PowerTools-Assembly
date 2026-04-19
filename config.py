@@ -8,6 +8,13 @@ import json
 from .lib import fusionAddInUtils as futil
 
 DEBUG = True
+
+# Set True to emit structured [PERF] timing lines to the Fusion Text Command
+# window from the perf_timer context manager in lib/fusionAddInUtils. Has zero
+# runtime cost when False — useful for diagnosing slow Hub operations in the
+# Global Parameters commands.
+PERF_TRACE = False
+
 ADDIN_NAME = os.path.basename(os.path.dirname(__file__))
 COMPANY_NAME = "IMA LLC"
 

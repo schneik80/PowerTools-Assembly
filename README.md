@@ -36,6 +36,9 @@ The following commands are included in this add-in:
 | [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
 | [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Visual node editor for designing an assembly hierarchy on a new, empty document, then generating every external component with the correct design intent in one step. |
 | [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
+| [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; PowerTools Assembly panel | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
+| [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; PowerTools Assembly panel | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
+| [Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md) | Global Parameters | QAT &rsaquo; File &rsaquo; PowerTools Settings | Force a full Hub scan and rewrite the local `gp_folder` / `gp_docs` caches for the active project when parameter sets appear missing or stale. |
 
 ---
 
@@ -144,6 +147,50 @@ For full usage details, see [Assembly Builder](./docs/Assembly%20Builder.md).
 **Requirements:** An Autodesk Fusion 3D Design must be active.
 
 For full usage details, see [Insert STEP File](./docs/Insert%20Step.md).
+
+---
+
+## Global Parameters commands
+
+These commands let teams define and distribute shared design parameters (material thicknesses, clearances, standard dimensions, etc.) across an entire Autodesk Hub project. Parameter sets are stored as Fusion design documents inside a `_Global Parameters` folder at the project root — the underscore prefix causes the folder to sort to the top of the Data Panel. Every parameter is marked as a Fusion **favorite** and tagged with the `PT-globparm` sentinel in its comment so the add-in can identify it across documents.
+
+Both dialogs use a two-level cache (`gp_folder_<project-key>.json` and `gp_docs_<project-key>.json` under `cache/`) so repeat openings skip the Hub folder scan. When a cache read fails, the command falls back to a Hub scan and refreshes the cache automatically. See **Refresh Global Parameters Cache** to force a full rescan.
+
+### Global Parameters
+
+**[Global Parameters](./docs/Global%20Parameters.md)** opens a dialog where you create or edit a named parameter set document in the active project's `_Global Parameters` folder. Parameters defined in the table are written as `userParameter`s (marked `isFavorite = True`) into both the parameter set document and the active document.
+
+- Create a new named parameter set, or edit an existing one chosen from the dropdown.
+- Define parameters with a name, numeric value, unit (in, ft, mm, cm, m), and optional comment.
+- Parameter names are validated against a regex and a Fusion reserved-unit list; duplicates are rejected with an inline reason.
+- Unsaved dialog state is cached on cancel and can be restored on next open.
+
+**Requirements:** An Autodesk Fusion 3D Design must be active and saved to a Hub project.
+
+For full usage details, see [Global Parameters](./docs/Global%20Parameters.md).
+
+### Link Global Parameters
+
+**[Link Global Parameters](./docs/Link%20Global%20Parameters.md)** scans the active project's `_Global Parameters` folder and lets you derive a selected parameter set into the active document as a Derive feature with `isIncludeFavoriteParameters = True`, so every favorite parameter becomes immediately available in design expressions.
+
+- Dropdown of available parameter sets; preview table shows name, expression, unit, and comment before committing.
+- Fast preview via JSON sidecar written by **Global Parameters** on save — avoids switching the active document.
+- Cache-id fast path for DataFile resolution, with forced Hub refresh fallback when a selected set is unresolved.
+
+**Requirements:** An Autodesk Fusion 3D Design must be active and saved. At least one parameter set must exist in the project.
+
+For full usage details, see [Link Global Parameters](./docs/Link%20Global%20Parameters.md).
+
+### Refresh Global Parameters Cache
+
+**[Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md)** forces a full Hub scan of the active project's `_Global Parameters` folder and overwrites the `gp_folder` and `gp_docs` caches. Use this when parameter sets appear missing, stale, or out of order in the other two dialogs.
+
+- Location: **QAT › File › PowerTools Settings › Refresh Global Parameters Cache**
+- The **PowerTools Settings** submenu is shared with other PowerTools add-ins; the command creates it on first run if it does not already exist.
+
+**Requirements:** An active Fusion document whose project contains a `_Global Parameters` folder.
+
+For full usage details, see [Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md).
 
 ---
 

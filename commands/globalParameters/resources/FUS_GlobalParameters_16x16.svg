@@ -1,0 +1,49 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g clip-path="url(#clip_16)">
+
+    <!-- Table: header bar -->
+    <rect x="1" y="1" width="10" height="2.5" fill="#999999"/>
+
+    <!-- Table: body -->
+    <rect x="1" y="3.5" width="10" height="8.5" fill="#D9D9D9"/>
+
+    <!-- Row dividers (2 rows only — any more is noise at 16px) -->
+    <rect x="1" y="6.5"  width="10" height="0.75" fill="#BBBBBB"/>
+    <rect x="1" y="9.25" width="10" height="0.75" fill="#BBBBBB"/>
+
+    <!-- Column divider -->
+    <rect x="6" y="3.5" width="0.75" height="8.5" fill="#BBBBBB"/>
+
+    <!-- Name stubs -->
+    <rect x="1.75" y="4.25"  width="3" height="1.25" rx="0.4" fill="#666666"/>
+    <rect x="1.75" y="7.25"  width="2" height="1.25" rx="0.4" fill="#666666"/>
+    <rect x="1.75" y="10"    width="3.5" height="1.25" rx="0.4" fill="#666666"/>
+
+    <!-- Value stubs -->
+    <rect x="7"   y="4.25"  width="2.5" height="1.25" rx="0.4" fill="#666666"/>
+    <rect x="7"   y="7.25"  width="2"   height="1.25" rx="0.4" fill="#666666"/>
+    <rect x="7"   y="10"    width="3"   height="1.25" rx="0.4" fill="#666666"/>
+
+    <!-- Table border -->
+    <rect x="1"  y="1"    width="0.75" height="11"   fill="#BBBBBB"/>
+    <rect x="10.25" y="1" width="0.75" height="11"   fill="#BBBBBB"/>
+    <rect x="1"  y="12"   width="10"   height="0.75" fill="#BBBBBB"/>
+
+    <!-- Globe badge — simplified at 16px: just fill + equator + meridian + ring -->
+    <circle cx="12" cy="12" r="4" fill="#73C5FF"/>
+    <!-- Equator -->
+    <line x1="8" y1="12" x2="16" y2="12" stroke="#3AABEE" stroke-width="0.75"/>
+    <!-- Central meridian -->
+    <line x1="12" y1="8" x2="12" y2="16" stroke="#3AABEE" stroke-width="0.75"/>
+    <!-- One latitude band (upper) -->
+    <ellipse cx="12" cy="10.25" rx="2.8" ry="0.9" fill="none" stroke="#3AABEE" stroke-width="0.6"/>
+    <!-- Outer ring -->
+    <circle cx="12" cy="12" r="4" fill="none" stroke="#3AABEE" stroke-width="0.85"/>
+
+  </g>
+  <defs>
+    <clipPath id="clip_16">
+      <rect width="16" height="16"/>
+    </clipPath>
+  </defs>
+</svg>

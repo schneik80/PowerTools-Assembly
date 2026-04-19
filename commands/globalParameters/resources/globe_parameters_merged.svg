@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <title>FUS_ParametersCommand_Globe</title>
+
+  <!--
+    32×32 canvas — FUS Parameters icon at full size.
+    Globe badge: lower-right quadrant.
+      Center of globe: (26, 26), radius 8 → sits in x:[18,32] y:[18,32]
+      Globe clipped to lower-right quadrant area (x≥17, y≥17) so it
+      doesn't overlap the FUS icon content.
+    1px gap between globe and FUS content: clip starts 1px inside quadrant.
+  -->
+
+  <defs>
+    <!-- Clip globe to lower-right region with 1px inset from center -->
+    <clipPath id="globeClip">
+      <rect x="18" y="18" width="14" height="14"/>
+    </clipPath>
+
+    <!-- White knockout behind globe area to clear FUS content underneath -->
+    <clipPath id="knockoutClip">
+      <rect x="17" y="17" width="15" height="15"/>
+    </clipPath>
+  </defs>
+
+  <!-- ── FUS PARAMETERS ICON — full 32×32 ── -->
+  <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+    <g transform="translate(0,0)">
+      <polygon fill="#666666" fill-rule="nonzero"
+        points="19.93,0 17.6,0 15.37,1.15 13.15,3.43 12.07,5.73 11.39,7.8 11.24,8.31
+                8.8,18.01 7.71,23.59 6.68,26.9 5.59,29.06 3.56,31.19 1.59,31.19
+                1.29,30.88 3,30.88 3,28 0,28 0,30.51 1.6,32 3.91,32 6.17,30.85
+                8.38,28.57 9.46,26.27 10.58,22.89 12.73,13.99 13.79,8.61
+                13.91,8.1 14.86,5.1 15.93,2.96 17.97,0.81 19.95,0.81
+                20.25,1.12 18,1.12 18,4 21.37,4 21.37,1.49"/>
+      <rect fill="#666666" fill-rule="nonzero" x="6" y="8" width="14" height="2"/>
+      <polygon fill="#666666" fill-rule="nonzero"
+        points="30.78,12 29.06,12 27.37,13 25.71,15.03 25.51,15.53 24.69,13.54
+                24.39,13.03 22.76,12.03 22.72,12 20.98,12 19.3,13.03
+                17.37,16.56 17.31,16.72 18.25,17.28 19.81,14.39 21.34,13.47
+                22.85,13.47 23.27,13.97 23.27,17.1 22.45,20.96 21.66,22.88
+                20.12,24.77 18.57,25.73 18.28,25.73 18.28,25.71 18.28,23.29
+                18.28,23.09 17.98,23.09 16,23.09 16,23.29 16,25.06 16,25.26
+                16,25.36 16,25.56 17.22,27.2 18.94,27.2 20.63,26.19
+                22.28,24.19 22.49,23.66 23.31,25.64 23.42,25.71 23.61,26.16
+                25.24,27.17 25.29,27.2 27.02,27.2 28.71,26.16 30.59,22.75
+                30.66,22.6 29.75,21.92 28.18,24.81 26.64,25.73 25.14,25.73
+                24.73,25.25 24.73,22.09 25.55,18.23 26.33,16.33 27.92,14.4
+                29.45,13.47 29.72,13.47 29.72,13.48 29.72,15.38 29.72,15.58
+                29.72,15.68 29.72,15.88 30.02,16.4 32,16.4 32,16.2 32,16.1
+                32,15.9 32,14.14 32,13.94 32,13.84 32,13.63"/>
+    </g>
+  </g>
+
+  <!-- ── WHITE KNOCKOUT — clear FUS content behind globe area ── -->
+  <!-- 1px gap: knockout starts at 17,17; globe clip starts at 18,18 -->
+  <rect x="17" y="17" width="15" height="15" fill="white"/>
+
+  <!-- ── GLOBE BADGE — lower-right, clipped to quadrant ── -->
+  <!--
+    Globe center: (25, 25), radius 7
+    Fits in x:[18,32] y:[18,32] with a little breathing room at the edges
+  -->
+  <g clip-path="url(#globeClip)"
+     fill="none" stroke="#1a1a1a" stroke-width="0.9"
+     stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- Outer circle -->
+    <circle cx="25" cy="25" r="7"/>
+
+    <!-- Equator (horizontal center line) -->
+    <line x1="18" y1="25" x2="32" y2="25"/>
+
+    <!-- Prime meridian (vertical center line) -->
+    <line x1="25" y1="18" x2="25" y2="32"/>
+
+    <!-- Central longitude oval -->
+    <ellipse cx="25" cy="25" rx="3.2" ry="7"/>
+
+    <!-- Upper latitude arc -->
+    <ellipse cx="25" cy="25" rx="7" ry="2.7"/>
+
+    <!-- Lower latitude arc -->
+    <ellipse cx="25" cy="25" rx="7" ry="4.8"/>
+
+  </g>
+
+</svg>

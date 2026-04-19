@@ -1,0 +1,75 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g clip-path="url(#clip_64)">
+
+    <!-- Table: header bar -->
+    <rect x="2" y="2" width="38" height="8" fill="#999999"/>
+    <!-- Header pip -->
+    <rect x="4" y="4" width="4" height="4" fill="#D9D9D9"/>
+    <!-- Second pip -->
+    <rect x="10" y="4" width="4" height="4" fill="#D9D9D9"/>
+
+    <!-- Table: body -->
+    <rect x="2" y="10" width="38" height="34" fill="#D9D9D9"/>
+
+    <!-- Row dividers (5 rows) -->
+    <rect x="2" y="17"   width="38" height="1.5" fill="#BBBBBB"/>
+    <rect x="2" y="24"   width="38" height="1.5" fill="#BBBBBB"/>
+    <rect x="2" y="31"   width="38" height="1.5" fill="#BBBBBB"/>
+    <rect x="2" y="38"   width="38" height="1.5" fill="#BBBBBB"/>
+
+    <!-- Column divider -->
+    <rect x="22" y="10" width="1.5" height="34" fill="#BBBBBB"/>
+
+    <!-- Name column stubs -->
+    <rect x="4"  y="12"   width="13" height="3" rx="1" fill="#666666"/>
+    <rect x="4"  y="19"   width="10" height="3" rx="1" fill="#666666"/>
+    <rect x="4"  y="26"   width="14" height="3" rx="1" fill="#666666"/>
+    <rect x="4"  y="33"   width="8"  height="3" rx="1" fill="#666666"/>
+    <rect x="4"  y="40"   width="12" height="3" rx="1" fill="#666666"/>
+
+    <!-- Value column stubs -->
+    <rect x="25" y="12"   width="11" height="3" rx="1" fill="#666666"/>
+    <rect x="25" y="19"   width="9"  height="3" rx="1" fill="#666666"/>
+    <rect x="25" y="26"   width="13" height="3" rx="1" fill="#666666"/>
+    <rect x="25" y="33"   width="10" height="3" rx="1" fill="#666666"/>
+    <rect x="25" y="40"   width="12" height="3" rx="1" fill="#666666"/>
+
+    <!-- Table border -->
+    <rect x="2"  y="2"  width="1.5" height="43"  fill="#BBBBBB"/>
+    <rect x="38.5" y="2" width="1.5" height="43"  fill="#BBBBBB"/>
+    <rect x="2"  y="44" width="38"  height="1.5"  fill="#BBBBBB"/>
+
+    <!-- Globe badge — 19px radius, centered at (46, 46) -->
+    <circle cx="46" cy="46" r="17" fill="#73C5FF"/>
+
+    <!-- Globe grid — equator -->
+    <line x1="29" y1="46" x2="63" y2="46" stroke="#3AABEE" stroke-width="1.25"/>
+
+    <!-- Upper latitude 1 -->
+    <ellipse cx="46" cy="38.5" rx="12" ry="3.5" fill="none" stroke="#3AABEE" stroke-width="1"/>
+    <!-- Upper latitude 2 -->
+    <ellipse cx="46" cy="31.5" rx="6"  ry="2"   fill="none" stroke="#3AABEE" stroke-width="0.75"/>
+
+    <!-- Lower latitude 1 -->
+    <ellipse cx="46" cy="53.5" rx="12" ry="3.5" fill="none" stroke="#3AABEE" stroke-width="1"/>
+    <!-- Lower latitude 2 -->
+    <ellipse cx="46" cy="60.5" rx="6"  ry="2"   fill="none" stroke="#3AABEE" stroke-width="0.75"/>
+
+    <!-- Central meridian -->
+    <line x1="46" y1="29" x2="46" y2="63" stroke="#3AABEE" stroke-width="1.25"/>
+
+    <!-- Left longitude arc -->
+    <path d="M46 29 C37 33.5 37 58.5 46 63" fill="none" stroke="#3AABEE" stroke-width="1"/>
+    <!-- Right longitude arc -->
+    <path d="M46 29 C55 33.5 55 58.5 46 63" fill="none" stroke="#3AABEE" stroke-width="1"/>
+
+    <!-- Globe outer ring -->
+    <circle cx="46" cy="46" r="17" fill="none" stroke="#3AABEE" stroke-width="1.5"/>
+
+  </g>
+  <defs>
+    <clipPath id="clip_64">
+      <rect width="64" height="64"/>
+    </clipPath>
+  </defs>
+</svg>

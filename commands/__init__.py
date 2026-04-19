@@ -6,8 +6,11 @@ from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
 from .externalize import entry as externalize
+from .globalParameters import entry as globalParameters
 from .insertSTEP import entry as insertSTEP
+from .linkGlobalParameters import entry as linkGlobalParameters
 from .refmanager import entry as refmanager
+from .refreshGlobalParametersCache import entry as refreshGlobalParametersCache
 from .refrences import entry as refrences
 from .refresh import entry as refresh
 
@@ -18,8 +21,11 @@ commands = [
     getandupdate,
     bottomupupdate,
     externalize,
+    globalParameters,
     insertSTEP,
+    linkGlobalParameters,
     refmanager,
+    refreshGlobalParametersCache,
     refrences,
     refresh,
 ]
