@@ -4,6 +4,7 @@
 import adsk.core
 import adsk.fusion
 import os
+import time
 import traceback
 from ...lib import fusionAddInUtils as futil
 from ... import config
@@ -33,8 +34,18 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource
 
 APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent after externalizing
 
+SAVE_LOC_ID = "save_location"
+SAME_AS_DOC = "Same as Document"
+CREATE_SUBFOLDER = "Create Sub-folder"
+SELECT_FOLDER = "Select Folder…"
+FOLDER_PATH_ID = "folder_path"
+BROWSE_ID = "browse_folder"
+
 # Holds references to event handlers
 local_handlers = []
+
+# User-picked cloud folder for the "Select Folder…" option. Cleared on dialog open.
+_selected_folder: adsk.core.DataFolder = None
 
 
 # Executed when add-in is run.
@@ -109,16 +120,36 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     # Dropdown: where to save the external documents
     save_loc = inputs.addDropDownCommandInput(
-        "save_location",
+        SAVE_LOC_ID,
         "Save Location",
         adsk.core.DropDownStyles.TextListDropDownStyle,
     )
-    save_loc.listItems.add("Same as Document", True)
-    save_loc.listItems.add("Create Sub-folder", False)
+    save_loc.listItems.add(SAME_AS_DOC, True)
+    save_loc.listItems.add(CREATE_SUBFOLDER, False)
+    save_loc.listItems.add(SELECT_FOLDER, False)
     save_loc.tooltip = (
         "Same as Document — saves components into the same hub folder as the active document.\n"
-        "Create Sub-folder — saves components into a new sub-folder named after the active document."
+        "Create Sub-folder — saves components into a new sub-folder named after the active document.\n"
+        "Select Folder… — browse to a specific cloud folder."
     )
+
+    # Default the displayed folder path to the active document's parent folder.
+    default_path = ""
+    active_data_file = app.activeDocument.dataFile
+    if active_data_file is not None:
+        default_path = _folder_path_string(active_data_file.parentFolder)
+
+    folder_path = inputs.addStringValueInput(FOLDER_PATH_ID, "Folder", default_path)
+    folder_path.isReadOnly = True
+    folder_path.isVisible = False
+
+    browse_btn = inputs.addBoolValueInput(BROWSE_ID, "Browse…", False, ICON_FOLDER, False)
+    browse_btn.isVisible = False
+    browse_btn.tooltip = "Open the cloud folder picker."
+
+    # Reset the cached selection each time the dialog opens.
+    global _selected_folder
+    _selected_folder = None
 
     # Checkbox: apply design intent to externalized documents
     apply_intent_input = inputs.addBoolValueInput(
@@ -137,11 +168,14 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 def command_input_changed(args: adsk.core.InputChangedEventArgs):
     futil.log(f"{CMD_NAME} Input Changed Event")
 
+    global _selected_folder
     changed_input = args.input
+    inputs = args.inputs
+
     if changed_input.id == "externalize_all":
         bool_input = adsk.core.BoolValueCommandInput.cast(changed_input)
         sel_input = adsk.core.SelectionCommandInput.cast(
-            args.inputs.itemById("occurrence_sel")
+            inputs.itemById("occurrence_sel")
         )
         if bool_input.value:
             # Hide the selector and make it optional (min=0) so the OK button
@@ -153,6 +187,26 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
             sel_input.isVisible = True
             sel_input.isEnabled = True
             sel_input.setSelectionLimits(1, 1)
+
+    elif changed_input.id == SAVE_LOC_ID:
+        dropdown = adsk.core.DropDownCommandInput.cast(changed_input)
+        is_select = dropdown.selectedItem.name == SELECT_FOLDER
+        inputs.itemById(FOLDER_PATH_ID).isVisible = is_select
+        inputs.itemById(BROWSE_ID).isVisible = is_select
+
+    elif changed_input.id == BROWSE_ID:
+        # BoolValueCommandInput displayed as a button fires this event on click.
+        dialog = ui.createCloudFolderDialog()
+        dialog.title = "Select Save Location"
+        active_data_file = app.activeDocument.dataFile
+        if active_data_file is not None:
+            dialog.initialFolder = active_data_file.parentFolder
+        if dialog.showDialog() == adsk.core.DialogResults.DialogOK:
+            _selected_folder = dialog.dataFolder
+            path_input = adsk.core.StringValueCommandInput.cast(
+                inputs.itemById(FOLDER_PATH_ID)
+            )
+            path_input.value = _folder_path_string(_selected_folder)
 
 
 # Called when the user clicks OK in the command dialog.
@@ -183,14 +237,17 @@ def command_execute(args: adsk.core.CommandEventArgs):
         cloud_folder: adsk.core.DataFolder = active_data_file.parentFolder
 
         save_location: str = adsk.core.DropDownCommandInput.cast(
-            inputs.itemById("save_location")
+            inputs.itemById(SAVE_LOC_ID)
         ).selectedItem.name
 
-        if save_location == "Create Sub-folder":
+        if save_location == CREATE_SUBFOLDER:
             target_folder = _get_or_create_subfolder(
                 cloud_folder, active_data_file.name
             )
+        elif save_location == SELECT_FOLDER and _selected_folder is not None:
+            target_folder = _selected_folder
         else:
+            # SAME_AS_DOC — or SELECT_FOLDER with no browse yet (default to parent).
             # Reuse a same-named subfolder if one already exists,
             # otherwise fall back to the document's own folder.
             existing_sub = _find_existing_subfolder(cloud_folder, active_data_file.name)
@@ -220,6 +277,17 @@ def command_execute(args: adsk.core.CommandEventArgs):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _folder_path_string(folder: adsk.core.DataFolder) -> str:
+    """Build a human-readable cloud folder path, e.g. 'Project / sub / sub2'."""
+    parts = []
+    current = folder
+    while current is not None and not current.isRoot:
+        parts.append(current.name)
+        current = current.parentFolder
+    parts.append(folder.parentProject.name)
+    return " / ".join(reversed(parts))
 
 
 def _get_or_create_subfolder(
@@ -257,17 +325,25 @@ def _find_existing_cloud_file(cloud_folder: adsk.core.DataFolder, comp_name: str
     return None
 
 
+UPLOAD_TIMEOUT_SECONDS = 120
+
+
 def _save_to_cloud(
     component: adsk.fusion.Component,
     comp_name: str,
     cloud_folder: adsk.core.DataFolder,
 ):
     """Upload component to the cloud folder and return the resulting DataFile.
-    Returns None if the upload fails."""
+    Returns None on failure or timeout."""
     future = component.saveCopyAs(comp_name, cloud_folder, "", "")
-    while True:
-        if future.uploadState != adsk.core.UploadStates.UploadProcessing:
-            break
+    deadline = time.monotonic() + UPLOAD_TIMEOUT_SECONDS
+    while future.uploadState == adsk.core.UploadStates.UploadProcessing:
+        if time.monotonic() > deadline:
+            futil.log(
+                f'{CMD_NAME}: Cloud upload of "{comp_name}" timed out after '
+                f"{UPLOAD_TIMEOUT_SECONDS}s — giving up."
+            )
+            return None
         adsk.doEvents()
 
     if future.uploadState == adsk.core.UploadStates.UploadFailed:
@@ -300,18 +376,23 @@ def _externalize_single(
     saved_data_file = _find_existing_cloud_file(target_folder, comp_name)
     if saved_data_file is not None:
         action = "reused existing cloud file"
+        freshly_uploaded = False
     else:
         saved_data_file = _save_to_cloud(occ.component, comp_name, target_folder)
         if saved_data_file is None:
             ui.messageBox(f'Cloud upload of "{comp_name}" failed.', CMD_NAME)
             return
         action = f'saved to "{target_folder.name}"'
+        freshly_uploaded = True
 
+    # Mutate the source first (delete + re-insert), THEN open the externalized
+    # doc to apply intent. Doing it in the other order leaves cached source
+    # references straddling a document switch, which Fusion handles poorly.
     occ.deleteMe()
-    new_occ = root.occurrences.addByInsert(saved_data_file, cached_transform, True)
+    root.occurrences.addByInsert(saved_data_file, cached_transform, True)
 
-    if apply_intent:
-        _apply_design_intent(new_occ, comp_name)
+    if apply_intent and freshly_uploaded:
+        _apply_design_intent_to_file(saved_data_file, comp_name)
 
     ui.messageBox(
         f'"{comp_name}" {action} and re-inserted at its original assembly position.',
@@ -324,7 +405,11 @@ def _externalize_all(
     target_folder: adsk.core.DataFolder,
     apply_intent: bool = True,
 ):
-    """Externalize every local first-level component in the active assembly."""
+    """Externalize every local first-level component in the active assembly.
+
+    Runs in three separated passes so cloud uploads, source mutations, and
+    document switching never interleave — interleaving them deadlocks Fusion.
+    """
     root = design.rootComponent
 
     # Snapshot all local first-level occurrences before modifying anything.
@@ -339,6 +424,8 @@ def _externalize_all(
                     "component": occ.component,
                     "comp_name": occ.component.name,
                     "transform": occ.transform2,
+                    "data_file": None,
+                    "freshly_uploaded": False,
                 }
             )
 
@@ -353,97 +440,111 @@ def _externalize_all(
     progress_bar = ui.progressBar
     progress_bar.show(f"Externalizing component %v of {total}…", 1, total)
 
+    # ----- Pass 1: upload every component to cloud (no source mutation). -----
+    futil.log(f"{CMD_NAME}: Pass 1/{'3' if apply_intent else '2'} — uploading {total} components.")
+    for idx, data in enumerate(pending):
+        comp_name = data["comp_name"]
+        adsk.doEvents()
+        try:
+            existing = _find_existing_cloud_file(target_folder, comp_name)
+            if existing is not None:
+                data["data_file"] = existing
+                futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] reused existing cloud file for {comp_name}")
+            else:
+                futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] uploading {comp_name}…")
+                df = _save_to_cloud(data["component"], comp_name, target_folder)
+                if df is None:
+                    futil.log(
+                        f'{CMD_NAME}: [{idx + 1}/{total}] upload of "{comp_name}" failed — skipping.'
+                    )
+                else:
+                    data["data_file"] = df
+                    data["freshly_uploaded"] = True
+                    futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] uploaded {comp_name}")
+        except:  # pylint:disable=bare-except
+            app.log(
+                f'{CMD_NAME}: Pass 1 error on "{comp_name}":\n{traceback.format_exc()}'
+            )
+
+    # ----- Pass 2: replace each local occurrence with its cloud xref. -----
+    futil.log(f"{CMD_NAME}: Pass 2/{'3' if apply_intent else '2'} — replacing occurrences with xrefs.")
     replaced = 0
     for idx, data in enumerate(pending):
         comp_name = data["comp_name"]
         progress_bar.progressValue = idx + 1
         adsk.doEvents()
 
+        if data["data_file"] is None:
+            continue
+
         try:
-            saved_data_file = _find_existing_cloud_file(target_folder, comp_name)
-            if saved_data_file is None:
-                saved_data_file = _save_to_cloud(
-                    data["component"], comp_name, target_folder
-                )
-                if saved_data_file is None:
-                    futil.log(
-                        f'{CMD_NAME}: Cloud upload of "{comp_name}" failed — skipping.'
-                    )
-                    continue
-
+            futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] replacing {comp_name}…")
             data["occ"].deleteMe()
-            new_occ = root.occurrences.addByInsert(saved_data_file, data["transform"], True)
+            root.occurrences.addByInsert(data["data_file"], data["transform"], True)
             replaced += 1
-
-            if apply_intent:
-                _apply_design_intent(new_occ, comp_name)
-
+            futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] replaced {comp_name}")
         except:  # pylint:disable=bare-except
             app.log(
-                f'{CMD_NAME}: Failed to externalize "{comp_name}":\n'
-                f"{traceback.format_exc()}"
+                f'{CMD_NAME}: Pass 2 error on "{comp_name}":\n{traceback.format_exc()}'
             )
-
-        # Every 5 replacements, trigger a local recovery save.
-        if total > 5 and replaced > 0 and replaced % 5 == 0:
-            try:
-                autosave = ui.commandDefinitions.itemById("AutoSaveFilesCommand")
-                autosave.execute()
-                futil.log(
-                    f"{CMD_NAME}: autosave triggered after {replaced} components."
-                )
-            except:  # pylint:disable=bare-except
-                app.log(
-                    f"{CMD_NAME}: autosave failed after {replaced} components:\n"
-                    f"{traceback.format_exc()}"
-                )
 
     progress_bar.hide()
 
+    # ----- Pass 3 (optional): apply design intent to freshly-uploaded docs. -----
+    if apply_intent:
+        futil.log(f"{CMD_NAME}: Pass 3/3 — applying design intent.")
+        for idx, data in enumerate(pending):
+            if data["freshly_uploaded"] and data["data_file"] is not None:
+                adsk.doEvents()
+                _apply_design_intent_to_file(data["data_file"], data["comp_name"])
+
+    futil.log(f"{CMD_NAME}: complete. {replaced}/{total} replaced.")
     ui.messageBox(
         f"{replaced} of {total} local components were externalized.", CMD_NAME
     )
 
 
-def _apply_design_intent(occ: adsk.fusion.Occurrence, comp_name: str):
-    """Open the externalized document, apply the appropriate design intent, and save."""
-    try:
-        data_file = occ.component.parentDesign.parentDocument.dataFile
-        if data_file is None:
-            return
+def _apply_design_intent_to_file(
+    data_file: adsk.core.DataFile, comp_name: str
+):
+    """Open the externalized document, apply the appropriate design intent,
+    save, and close. Must be called BEFORE inserting the file into the source
+    assembly, otherwise the source ends up with an out-of-date xref."""
+    if data_file is None:
+        return
 
+    doc = None
+    try:
         doc = app.documents.open(data_file, True)
         des = adsk.fusion.Design.cast(app.activeProduct)
         if not des:
-            doc.close(False)
             return
 
         root_comp = des.rootComponent
         if root_comp.occurrences.count == 0:
-            # No children = part
             intent_type = adsk.fusion.DesignIntentTypes.PartDesignIntentType
             intent_label = "part"
+        elif root_comp.sketches.count > 0 or root_comp.bRepBodies.count > 0:
+            intent_type = adsk.fusion.DesignIntentTypes.HybridDesignIntentType
+            intent_label = "hybrid assembly"
         else:
-            sketch_count = root_comp.sketches.count
-            body_count = root_comp.bRepBodies.count
+            intent_type = adsk.fusion.DesignIntentTypes.AssemblyDesignIntentType
+            intent_label = "assembly"
 
-            if sketch_count > 0 or body_count > 0:
-                intent_type = adsk.fusion.DesignIntentTypes.HybridDesignIntentType
-                intent_label = "hybrid assembly"
-            else:
-                intent_type = adsk.fusion.DesignIntentTypes.AssemblyDesignIntentType
-                intent_label = "assembly"
-
-        des.designIntent = intent_type
-        futil.log(f"   {intent_label.capitalize()} intent applied to {comp_name}")
-
-        doc.save("")
-        doc.close(False)
+        if des.designIntent != intent_type:
+            des.designIntent = intent_type
+            futil.log(f"   {intent_label.capitalize()} intent applied to {comp_name}")
+            doc.save("")
+        else:
+            futil.log(f"   {intent_label.capitalize()} intent already set on {comp_name}")
 
     except Exception as intent_error:
         futil.log(
             f"   Failed to apply design intent to {comp_name}: {intent_error}"
         )
+    finally:
+        if doc is not None:
+            doc.close(False)
 
 
 # Called when the command is destroyed (dialog closed).
