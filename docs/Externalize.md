@@ -11,7 +11,7 @@ The Externalize command converts one or more local (inline) components in the ac
 - Save externalized components to the same folder as the active document, or to a new sub-folder named after the active document.
 - Reuse an existing cloud file automatically if a file with the same name already exists in the target folder.
 - Preserve the position and orientation of each component exactly as it was in the original assembly.
-- Watch progress in an optional live log viewer.
+- Watch progress on the Fusion status bar (per-component progress) or in an optional live log viewer.
 - Resume a prior run that was interrupted: the command detects which components already completed and processes only the remaining ones.
 - Get a single new parent assembly version at the end of the run (one cloud-committing save, regardless of how many components were externalized).
 - Stay crash-safe mid-run via Fusion's recovery save, triggered between iterations.

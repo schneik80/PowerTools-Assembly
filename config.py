@@ -7,7 +7,7 @@ import os.path
 import json
 from .lib import fusionAddInUtils as futil
 
-DEBUG = True
+DEBUG = False
 
 # Set True to emit structured [PERF] timing lines to the Fusion Text Command
 # window from the perf_timer context manager in lib/fusionAddInUtils. Has zero
