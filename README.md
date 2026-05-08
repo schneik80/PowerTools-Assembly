@@ -71,6 +71,10 @@ For full usage details, see [Reference Manager](./docs/Reference%20Manager.md).
 - Externalize all local first-level components in one step using **Externalize All**.
 - Save to the same folder as the active document or to a new named sub-folder.
 - Automatically reuse an existing cloud file if one with the same name already exists.
+- **Single end-of-run parent version** — one cloud save commits every replacement, no matter how many components were externalized.
+- **Crash-safe mid-run** — Fusion's recovery save (`AutoSaveFilesCommand`) is triggered between iterations to keep work safe even if Fusion crashes before the final commit.
+- **Resume-aware** — on launch, inspects the temp log to detect an incomplete prior run and skips components that already completed.
+- **Live log viewer** — optionally opens Console.app (macOS) or a PowerShell window (Windows) so you can watch progress live.
 
 **Requirements:** An Autodesk Fusion 3D Design must be active and saved.
 

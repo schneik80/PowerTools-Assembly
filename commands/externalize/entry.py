@@ -4,8 +4,10 @@
 import adsk.core
 import adsk.fusion
 import os
+import re
 import time
 import traceback
+from datetime import datetime
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -20,6 +22,13 @@ CMD_Description = (
 )
 IS_PROMOTED = False
 
+# Custom event used to defer the actual save/replace work out of
+# command_execute. saveCopyAs's upload pipeline does not advance while
+# command_execute holds the main thread (Autodesk forum 11164467); inside
+# a customEvent handler it does. The spike command_test_customevent_save
+# proved a stuck component (KLROLLE) went from ∞ stall to 5.9s.
+EVENT_ID = "PTAT-externalize-runner"
+
 # Global variables by referencing values from /config.py
 WORKSPACE_ID = config.design_workspace
 TAB_ID = config.tools_tab_id
@@ -32,39 +41,44 @@ PANEL_AFTER = config.my_panel_after
 # Resource location for command icons
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
 
-APPLY_INTENT_ID = "apply_intent"  # Checkbox to apply design intent after externalizing
-
+# Command input IDs
 SAVE_LOC_ID = "save_location"
 SAME_AS_DOC = "Same as Document"
 CREATE_SUBFOLDER = "Create Sub-folder"
-SELECT_FOLDER = "Select Folder…"
-FOLDER_PATH_ID = "folder_path"
-BROWSE_ID = "browse_folder"
+
+LOG_ENABLE_ID = "enable_log"
+LOG_PATH_ID = "log_path"
+LOG_BROWSE_ID = "browse_log"
+LOG_OPEN_VIEW_ID = "open_log_view"
+RESUME_STATUS_ID = "resume_status"
 
 # Holds references to event handlers
 local_handlers = []
 
-# User-picked cloud folder for the "Select Folder…" option. Cleared on dialog open.
-_selected_folder: adsk.core.DataFolder = None
+# Custom event handler kept alive across command invocations.
+_event_handler = None
+
+# State passed from command_execute → custom event handler. Replaced on each
+# fire; cleared by the handler when it picks the run up.
+_pending_run: dict | None = None
+
+# Resume state computed in command_created and re-checked in command_execute.
+resume_plan: dict = {}
 
 
 # Executed when add-in is run.
 def start():
-    # ******************************** Create Command Definition ********************************
+    global _event_handler
+
     cmd_def = ui.commandDefinitions.addButtonDefinition(
         CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
     )
-
-    # Add command created handler.
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    # ******************************** Create Command Control ********************************
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
-
     toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
     if toolbar_tab is None:
         toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-
     panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
     if panel is None:
         panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
@@ -72,9 +86,21 @@ def start():
     control = panel.controls.addCommand(cmd_def)
     control.isPromoted = IS_PROMOTED
 
+    # Register the runner customEvent. unregister-then-register ensures a
+    # clean slate if the add-in was reloaded without restarting Fusion.
+    try:
+        app.unregisterCustomEvent(EVENT_ID)
+    except Exception:
+        pass
+    custom_event = app.registerCustomEvent(EVENT_ID)
+    _event_handler = _RunnerHandler()
+    custom_event.add(_event_handler)
+
 
 # Executed when add-in is stopped.
 def stop():
+    global _event_handler
+
     workspace = ui.workspaces.itemById(WORKSPACE_ID)
     panel = workspace.toolbarPanels.itemById(PANEL_ID)
     toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
@@ -83,15 +109,18 @@ def stop():
 
     if command_control:
         command_control.deleteMe()
-
     if command_definition:
         command_definition.deleteMe()
-
     if panel.controls.count == 0:
         panel.deleteMe()
-
     if toolbar_tab.toolbarPanels.count == 0:
         toolbar_tab.deleteMe()
+
+    try:
+        app.unregisterCustomEvent(EVENT_ID)
+    except Exception:
+        pass
+    _event_handler = None
 
 
 # Called when the user clicks the button.
@@ -102,8 +131,27 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     cmd.isExecutedWhenPreEmpted = False
     inputs = cmd.commandInputs
 
-    # Selection input: pick the occurrence to externalize
-    sel_input = inputs.addSelectionInput(
+    # Pre-compute resume plan so the Main tab can show status before any work runs.
+    global resume_plan
+    pending_names = _snapshot_local_component_names()
+    try:
+        resume_plan = _analyze_resume_state(
+            _default_log_path(), app.version, pending_names
+        )
+    except Exception as resume_error:
+        resume_plan = {
+            "log_exists": False,
+            "should_resume": False,
+            "completed_successfully": False,
+            "resume_skip_set": set(),
+            "status_message": f"Resume check failed ({resume_error}). A full run will start.",
+        }
+
+    # ---- Main tab ----
+    main_tab = inputs.addTabCommandInput("mainTab", "Main")
+    main_inputs = main_tab.children
+
+    sel_input = main_inputs.addSelectionInput(
         "occurrence_sel",
         "Component",
         "Select the component occurrence to externalize",
@@ -111,51 +159,66 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     sel_input.addSelectionFilter("Occurrences")
     sel_input.setSelectionLimits(1, 1)
 
-    # Checkbox: externalize every local first-level component in the assembly
-    ext_all = inputs.addBoolValueInput("externalize_all", "Externalize All", True)
+    ext_all = main_inputs.addBoolValueInput("externalize_all", "Externalize All", True)
     ext_all.tooltip = (
         "When checked, every local first-level component in the active assembly "
         "is externalized automatically. The component selector is disabled."
     )
 
-    # Dropdown: where to save the external documents
-    save_loc = inputs.addDropDownCommandInput(
+    save_loc = main_inputs.addDropDownCommandInput(
         SAVE_LOC_ID,
         "Save Location",
-        adsk.core.DropDownStyles.TextListDropDownStyle,
+        adsk.core.DropDownStyles.TextListDropDownStyle,  # type: ignore[arg-type]
     )
     save_loc.listItems.add(SAME_AS_DOC, True)
     save_loc.listItems.add(CREATE_SUBFOLDER, False)
-    save_loc.listItems.add(SELECT_FOLDER, False)
     save_loc.tooltip = (
         "Same as Document — saves components into the same hub folder as the active document.\n"
-        "Create Sub-folder — saves components into a new sub-folder named after the active document.\n"
-        "Select Folder… — browse to a specific cloud folder."
+        "Create Sub-folder — saves components into a new sub-folder named after the active document."
     )
 
-    # Default the displayed folder path to the active document's parent folder.
-    default_path = ""
-    active_data_file = app.activeDocument.dataFile
-    if active_data_file is not None:
-        default_path = _folder_path_string(active_data_file.parentFolder)
-
-    folder_path = inputs.addStringValueInput(FOLDER_PATH_ID, "Folder", default_path)
-    folder_path.isReadOnly = True
-    folder_path.isVisible = False
-
-    browse_btn = inputs.addBoolValueInput(BROWSE_ID, "Browse…", False, ICON_FOLDER, False)
-    browse_btn.isVisible = False
-    browse_btn.tooltip = "Open the cloud folder picker."
-
-    # Reset the cached selection each time the dialog opens.
-    global _selected_folder
-    _selected_folder = None
-
-    # Checkbox: apply design intent to externalized documents
-    apply_intent_input = inputs.addBoolValueInput(
-        APPLY_INTENT_ID, "Apply Design Doc Intent", True, "", True
+    resume_status_input = main_inputs.addTextBoxCommandInput(
+        RESUME_STATUS_ID,
+        "Run status",
+        resume_plan.get("status_message", "A full run will start."),
+        3,
+        True,
     )
-    apply_intent_input.tooltip = "Applies design intent (Part, Assembly, or Hybrid) to each externalized document."
+    resume_status_input.tooltip = (
+        "Startup check based on the temp log and Fusion client version."
+    )
+
+    # ---- Logging tab ----
+    log_tab = inputs.addTabCommandInput("logTab", "Logging")
+    log_inputs = log_tab.children
+
+    log_enable = log_inputs.addBoolValueInput(
+        LOG_ENABLE_ID, "Log Progress", True, "", True
+    )
+    log_enable.tooltip = (
+        "Enables detailed progress logging to a text file during the externalize run."
+    )
+
+    log_path = log_inputs.addStringValueInput(
+        LOG_PATH_ID, "Log file path", _default_log_path()
+    )
+    log_path.isReadOnly = True
+
+    browse_btn = log_inputs.addBoolValueInput(
+        LOG_BROWSE_ID, "Browse…", False, "", False
+    )
+    browse_btn.tooltip = "Click to choose a custom log file location."
+
+    open_view = log_inputs.addBoolValueInput(
+        LOG_OPEN_VIEW_ID, "Open live log viewer", True, "", True
+    )
+    open_view.tooltip = (
+        "Automatically opens a system console window to live-monitor log output during the run."
+    )
+
+    log_path.isEnabled = log_enable.value
+    browse_btn.isEnabled = log_enable.value
+    open_view.isEnabled = log_enable.value
 
     futil.add_handler(
         cmd.inputChanged, command_input_changed, local_handlers=local_handlers
@@ -168,63 +231,79 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 def command_input_changed(args: adsk.core.InputChangedEventArgs):
     futil.log(f"{CMD_NAME} Input Changed Event")
 
-    global _selected_folder
-    changed_input = args.input
-    inputs = args.inputs
+    try:
+        changed_input = args.input
+        inputs = args.inputs
 
-    if changed_input.id == "externalize_all":
-        bool_input = adsk.core.BoolValueCommandInput.cast(changed_input)
-        sel_input = adsk.core.SelectionCommandInput.cast(
-            inputs.itemById("occurrence_sel")
-        )
-        if bool_input.value:
-            # Hide the selector and make it optional (min=0) so the OK button
-            # becomes active without requiring a selection.
-            sel_input.isVisible = False
-            sel_input.isEnabled = False
-            sel_input.setSelectionLimits(0, 1)
-        else:
-            sel_input.isVisible = True
-            sel_input.isEnabled = True
-            sel_input.setSelectionLimits(1, 1)
-
-    elif changed_input.id == SAVE_LOC_ID:
-        dropdown = adsk.core.DropDownCommandInput.cast(changed_input)
-        is_select = dropdown.selectedItem.name == SELECT_FOLDER
-        inputs.itemById(FOLDER_PATH_ID).isVisible = is_select
-        inputs.itemById(BROWSE_ID).isVisible = is_select
-
-    elif changed_input.id == BROWSE_ID:
-        # BoolValueCommandInput displayed as a button fires this event on click.
-        dialog = ui.createCloudFolderDialog()
-        dialog.title = "Select Save Location"
-        active_data_file = app.activeDocument.dataFile
-        if active_data_file is not None:
-            dialog.initialFolder = active_data_file.parentFolder
-        if dialog.showDialog() == adsk.core.DialogResults.DialogOK:
-            _selected_folder = dialog.dataFolder
-            path_input = adsk.core.StringValueCommandInput.cast(
-                inputs.itemById(FOLDER_PATH_ID)
+        if changed_input.id == "externalize_all":
+            bool_input = adsk.core.BoolValueCommandInput.cast(changed_input)
+            sel_input = adsk.core.SelectionCommandInput.cast(
+                inputs.itemById("occurrence_sel")
             )
-            path_input.value = _folder_path_string(_selected_folder)
+            if bool_input.value:
+                sel_input.isVisible = False
+                sel_input.isEnabled = False
+                sel_input.setSelectionLimits(0, 1)
+            else:
+                sel_input.isVisible = True
+                sel_input.isEnabled = True
+                sel_input.setSelectionLimits(1, 1)
+            return
+
+        if changed_input.id == LOG_ENABLE_ID:
+            enabled = adsk.core.BoolValueCommandInput.cast(changed_input).value
+            inputs.itemById(LOG_PATH_ID).isEnabled = enabled
+            inputs.itemById(LOG_BROWSE_ID).isEnabled = enabled
+            inputs.itemById(LOG_OPEN_VIEW_ID).isEnabled = enabled
+            return
+
+        if changed_input.id == LOG_BROWSE_ID:
+            btn = adsk.core.BoolValueCommandInput.cast(changed_input)
+            btn.value = False  # momentary
+
+            dlg: adsk.core.FileDialog = ui.createFileDialog()
+            dlg.title = "Save log file"
+            dlg.filter = "Log files (*.log);;Text files (*.txt);;All Files (*.*)"
+            dlg.isMultiSelectEnabled = False
+            dlg.initialDirectory = futil.default_log_directory()
+            dlg.initialFilename = _propose_default_log_filename()
+            if dlg.showSave() == adsk.core.DialogResults.DialogOK:
+                path_input = adsk.core.StringValueCommandInput.cast(
+                    inputs.itemById(LOG_PATH_ID)
+                )
+                path_input.value = dlg.filename
+            return
+
+    except Exception:
+        if ui:
+            ui.messageBox(f"Input handling failed:\n{traceback.format_exc()}")
 
 
 # Called when the user clicks OK in the command dialog.
 def command_execute(args: adsk.core.CommandEventArgs):
+    """Set up the run, then defer all save/replace work to the customEvent
+    handler. command_execute returns immediately so Fusion's upload pipeline
+    can drain — saveCopyAs does NOT advance while command_execute holds the
+    main thread (Autodesk forum 11164467)."""
+    global _pending_run
     futil.log(f"{CMD_NAME} Command Execute Event")
 
     try:
+        if _pending_run is not None:
+            ui.messageBox(
+                "An externalize run is already in progress. Wait for it to "
+                "finish before starting another.",
+                CMD_NAME,
+            )
+            return
+
         design = adsk.fusion.Design.cast(app.activeProduct)
         if not design:
             ui.messageBox("A Fusion 3D Design must be active.", CMD_NAME)
             return
 
         inputs = args.command.commandInputs
-        externalize_all: bool = adsk.core.BoolValueCommandInput.cast(
-            inputs.itemById("externalize_all")
-        ).value
 
-        # --- Resolve the cloud folder from the active document ---
         active_data_file = app.activeDocument.dataFile
         if active_data_file is None:
             ui.messageBox(
@@ -234,67 +313,456 @@ def command_execute(args: adsk.core.CommandEventArgs):
             )
             return
 
-        cloud_folder: adsk.core.DataFolder = active_data_file.parentFolder
-
-        save_location: str = adsk.core.DropDownCommandInput.cast(
+        externalize_all = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById("externalize_all")
+        ).value
+        save_location = adsk.core.DropDownCommandInput.cast(
             inputs.itemById(SAVE_LOC_ID)
         ).selectedItem.name
+        create_log = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(LOG_ENABLE_ID)
+        ).value
+        open_log_view = adsk.core.BoolValueCommandInput.cast(
+            inputs.itemById(LOG_OPEN_VIEW_ID)
+        ).value
+        log_path_val = adsk.core.StringValueCommandInput.cast(
+            inputs.itemById(LOG_PATH_ID)
+        ).value or _default_log_path()
 
+        cloud_folder: adsk.core.DataFolder = active_data_file.parentFolder
         if save_location == CREATE_SUBFOLDER:
-            target_folder = _get_or_create_subfolder(
-                cloud_folder, active_data_file.name
-            )
-        elif save_location == SELECT_FOLDER and _selected_folder is not None:
-            target_folder = _selected_folder
+            target_folder = _get_or_create_subfolder(cloud_folder, active_data_file.name)
         else:
-            # SAME_AS_DOC — or SELECT_FOLDER with no browse yet (default to parent).
-            # Reuse a same-named subfolder if one already exists,
-            # otherwise fall back to the document's own folder.
             existing_sub = _find_existing_subfolder(cloud_folder, active_data_file.name)
             target_folder = existing_sub if existing_sub is not None else cloud_folder
 
-        apply_intent: bool = adsk.core.BoolValueCommandInput.cast(
-            inputs.itemById(APPLY_INTENT_ID)
-        ).value
-
-        if externalize_all:
-            _externalize_all(design, target_folder, apply_intent)
-        else:
-            sel_input = adsk.core.SelectionCommandInput.cast(
-                inputs.itemById("occurrence_sel")
+        pending = _build_pending_list(design, externalize_all, inputs)
+        if pending is None:
+            return  # user-facing message already shown
+        if not pending:
+            ui.messageBox(
+                "No local first-level components were found to externalize.", CMD_NAME
             )
+            return
 
-            if sel_input.selectionCount == 0:
-                ui.messageBox("No component selected.", CMD_NAME)
-                return
+        # Re-check the log right before running so we have the most current state.
+        pending_names = [d["comp_name"] for d in pending]
+        resume_info = _analyze_resume_state(log_path_val, app.version, pending_names)
+        skip_set = resume_info.get("resume_skip_set", set())
 
-            _externalize_single(sel_input.selection(0).entity, design, target_folder, apply_intent)
+        # If the previous run completed cleanly, start fresh — overwrite the log.
+        if resume_info.get("completed_successfully"):
+            skip_set = set()
+            log_mode = "w"
+        else:
+            log_mode = "a" if resume_info.get("should_resume") else "w"
+
+        runnable = [d for d in pending if d["comp_name"] not in skip_set]
+        total = len(runnable)
+        skipped_resume = len(pending) - total
+
+        if create_log:
+            try:
+                _write_log_header(
+                    log_path_val,
+                    log_mode,
+                    fusion_version=app.version,
+                    active_data_file=active_data_file,
+                    target_folder=target_folder,
+                    externalize_all=externalize_all,
+                    resume_info=resume_info,
+                    runnable_total=total,
+                    skipped_resume=skipped_resume,
+                    pending_names=pending_names,
+                    skip_set=skip_set,
+                )
+            except Exception as log_e:
+                futil.log(f"Failed to initialize log file: {log_e}")
+                create_log = False
+
+        log_writer = _LogWriter(log_path_val if create_log else None)
+
+        if create_log and open_log_view:
+            _, msg = futil.open_live_log_viewer(log_path_val)
+            log_writer(msg)
+
+        # Stash run state for the customEvent handler. The handler runs after
+        # this command_execute returns, in a context where saveCopyAs's
+        # upload pipeline actually drains.
+        _pending_run = {
+            "log_writer": log_writer,
+            "runnable": runnable,
+            "target_folder": target_folder,
+            "parent_doc": app.activeDocument,
+            "total": total,
+            "skipped_resume": skipped_resume,
+        }
+
+        log_writer(
+            f"Run scheduled: {total} components ({skipped_resume} skipped from prior run). "
+            f"Firing customEvent…"
+        )
+        ok = app.fireCustomEvent(EVENT_ID)
+        log_writer(f"fireCustomEvent returned {ok}; dialog will close now.")
 
     except:  # pylint:disable=bare-except
+        _pending_run = None
         app.log(f"{CMD_NAME} failed:\n{traceback.format_exc()}")
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Custom event handler — runs the actual save/replace work outside command_execute
 # ---------------------------------------------------------------------------
 
 
-def _folder_path_string(folder: adsk.core.DataFolder) -> str:
-    """Build a human-readable cloud folder path, e.g. 'Project / sub / sub2'."""
-    parts = []
-    current = folder
-    while current is not None and not current.isRoot:
-        parts.append(current.name)
-        current = current.parentFolder
-    parts.append(folder.parentProject.name)
-    return " / ".join(reversed(parts))
+class _RunnerHandler(adsk.core.CustomEventHandler):
+    """Runs the per-iteration externalize loop in a context where Fusion's
+    upload pipeline actually advances.
+
+    Per iteration:
+      1. Find existing cloud file by name, or `saveCopyAs` to upload.
+      2. `deleteMe` the original local occurrence.
+      3. `addByInsert` the cloud reference at the original transform.
+      4. `AutoSaveFilesCommand` — local recovery checkpoint (no cloud version).
+      5. CHECKPOINT marker → resume can pick up here on next run.
+
+    At end of run: one `Document.save` to commit a single new parent version
+    that contains every replacement (instead of one cloud version per
+    iteration).
+    """
+
+    def notify(self, args):
+        global _pending_run
+        run = _pending_run
+        _pending_run = None
+
+        if run is None:
+            futil.log(f"{CMD_NAME}: handler fired with no pending run — ignoring")
+            return
+
+        log_writer = run["log_writer"]
+        runnable = run["runnable"]
+        target_folder = run["target_folder"]
+        parent_doc = run["parent_doc"]
+        total = run["total"]
+        skipped_resume = run["skipped_resume"]
+
+        try:
+            replaced = self._run_loop(runnable, target_folder, total, log_writer)
+            self._finalize(
+                parent_doc, replaced, total, skipped_resume, log_writer
+            )
+        except Exception:
+            log_writer(
+                f"Externalize handler crashed:\n{traceback.format_exc()}"
+            )
+            try:
+                ui.messageBox(
+                    f"{CMD_NAME} failed:\n{traceback.format_exc()}", CMD_NAME
+                )
+            except Exception:
+                pass
+
+    def _run_loop(self, runnable, target_folder, total, log_writer):
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if design is None:
+            log_writer("ERROR: no active design when handler started")
+            return 0
+        root = design.rootComponent
+
+        replaced = 0
+        no_cancel = lambda: False
+
+        for idx, data in enumerate(runnable, 1):
+            comp_name = data["comp_name"]
+
+            try:
+                df = _find_existing_cloud_file(target_folder, comp_name)
+                if df is not None:
+                    log_writer(f"[{idx}/{total}] reused {comp_name}")
+                else:
+                    log_writer(f"[{idx}/{total}] uploading {comp_name}…")
+                    upload_t0 = time.monotonic()
+                    df = _save_to_cloud(
+                        data["component"],
+                        comp_name,
+                        target_folder,
+                        log_writer,
+                        no_cancel,
+                    )
+                    if df is None:
+                        log_writer(
+                            f"[{idx}/{total}] upload failed for {comp_name} — skipping"
+                        )
+                        continue
+                    log_writer(
+                        f"[{idx}/{total}] uploaded {comp_name} "
+                        f"({time.monotonic() - upload_t0:.1f}s)"
+                    )
+
+                log_writer(f"[{idx}/{total}] replacing {comp_name}…")
+                data["occ"].deleteMe()
+                root.occurrences.addByInsert(df, data["transform"], True)
+                replaced += 1
+                log_writer(f"[{idx}/{total}] replaced {comp_name}")
+
+                # Local recovery checkpoint — keeps work safe across crashes
+                # without creating a new parent cloud version every iteration.
+                _temp_save(log_writer)
+
+                log_writer(
+                    f"CHECKPOINT|REPLACE_COMPLETE|component={comp_name}|index={idx}"
+                )
+
+            except Exception:
+                log_writer(
+                    f'[{idx}/{total}] error on "{comp_name}":\n{traceback.format_exc()}'
+                )
+
+        return replaced
+
+    def _finalize(self, parent_doc, replaced, total, skipped_resume, log_writer):
+        # Single cloud-committing save for the parent. One new parent version
+        # for the whole run, no matter how many components were replaced.
+        if replaced > 0:
+            try:
+                _save_parent_doc(parent_doc, replaced, log_writer, lambda: False)
+            except Exception:
+                log_writer(f"Parent save raised:\n{traceback.format_exc()}")
+
+        if replaced == total:
+            footer = (
+                f"Externalize completed successfully. {replaced} of {total} replaced "
+                f"this run; {skipped_resume} from prior run."
+            )
+        else:
+            footer = (
+                f"Externalize finished with skips. {replaced} of {total} replaced "
+                f"this run; {skipped_resume} from prior run."
+            )
+        log_writer(footer)
+
+        try:
+            ui.messageBox(
+                f"{replaced} of {total} components were externalized this run."
+                + (
+                    f"\nResumed from prior run: {skipped_resume} already done."
+                    if skipped_resume
+                    else ""
+                ),
+                CMD_NAME,
+            )
+        except Exception:
+            pass
 
 
-def _get_or_create_subfolder(
-    parent_folder: adsk.core.DataFolder, name: str
-) -> adsk.core.DataFolder:
-    """Return the subfolder with the given name inside parent_folder,
-    creating it if it does not already exist."""
+def _temp_save(log_fn=None):
+    """Recovery checkpoint via Fusion's `AutoSaveFilesCommand` text command.
+
+    Saves the active document's working state to local recovery cache without
+    creating a new cloud version. Combined with a single `Document.save` at
+    end-of-run, this gives crash safety mid-run without burning one cloud
+    version per replacement.
+    """
+    log = log_fn or (lambda _msg: None)
+    try:
+        cmd_defs = ui.commandDefinitions
+        autosave = cmd_defs.itemById("AutoSaveFilesCommand")
+        if autosave is None:
+            log("AutoSaveFilesCommand not found in commandDefinitions")
+            return False
+        return bool(autosave.execute())
+    except Exception as e:
+        log(f"AutoSaveFilesCommand raised: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Pending-list construction
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_local_component_names():
+    """Return component names for local first-level occurrences in the active design.
+
+    Used by command_created to drive the resume status, before any inputs are read.
+    Robust to no-active-design — returns an empty list.
+    """
+    design = adsk.fusion.Design.cast(app.activeProduct)
+    if not design:
+        return []
+    names = []
+    root = design.rootComponent
+    for i in range(root.occurrences.count):
+        occ = root.occurrences.item(i)
+        if occ.component.parentDesign == design:
+            names.append(occ.component.name)
+    return names
+
+
+def _build_pending_list(design, externalize_all, inputs):
+    """Build the [{occ, component, comp_name, transform}, …] list for the run.
+
+    Returns an empty list if there are no local components, or None on a user-facing
+    error (in which case a messageBox has already been shown)."""
+    root = design.rootComponent
+
+    if externalize_all:
+        pending = []
+        for i in range(root.occurrences.count):
+            occ = root.occurrences.item(i)
+            if occ.component.parentDesign == design:
+                pending.append(
+                    {
+                        "occ": occ,
+                        "component": occ.component,
+                        "comp_name": occ.component.name,
+                        "transform": occ.transform2,
+                    }
+                )
+        return pending
+
+    sel_input = adsk.core.SelectionCommandInput.cast(inputs.itemById("occurrence_sel"))
+    if sel_input.selectionCount == 0:
+        ui.messageBox("No component selected.", CMD_NAME)
+        return None
+
+    entity = sel_input.selection(0).entity
+    if isinstance(entity, adsk.fusion.Occurrence):
+        occ = entity
+    elif hasattr(entity, "assemblyContext") and entity.assemblyContext:
+        occ = entity.assemblyContext
+    else:
+        ui.messageBox(
+            "Selected entity is not a component occurrence. Please select a component.",
+            CMD_NAME,
+        )
+        return None
+
+    if occ.component.parentDesign != design:
+        ui.messageBox(
+            f'"{occ.component.name}" is already an external reference.',
+            CMD_NAME,
+        )
+        return []
+
+    return [
+        {
+            "occ": occ,
+            "component": occ.component,
+            "comp_name": occ.component.name,
+            "transform": occ.transform2,
+        }
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Parent-doc helpers
+# ---------------------------------------------------------------------------
+
+
+def _save_to_cloud(
+    component: adsk.fusion.Component,
+    comp_name: str,
+    cloud_folder: adsk.core.DataFolder,
+    log_fn=None,
+    cancel_check=None,
+):
+    """Upload `component` to `cloud_folder`; return DataFile or None.
+
+    Tight `adsk.doEvents()` spin on `future.uploadState`, no `time.sleep`.
+    The continuous event pumping is what advances Fusion's upload pipeline
+    while command_execute is held open. A `time.sleep` parks the main
+    thread and the pipeline stalls indefinitely (forum 11164467); batching
+    many futures without a tight per-iteration pump has the same effect.
+    Pattern restored from commit 9609042 where it was first proven to work.
+    """
+    log = log_fn or (lambda _msg: None)
+    is_cancelled = cancel_check or (lambda: False)
+
+    save_t0 = time.monotonic()
+    try:
+        future = component.saveCopyAs(comp_name, cloud_folder, "", "")
+    except Exception as e:
+        log(f"  saveCopyAs raised: {e}")
+        return None
+    if future is None:
+        log("  saveCopyAs returned None")
+        return None
+
+    last_heartbeat = save_t0
+    while True:
+        adsk.doEvents()
+        try:
+            state = future.uploadState
+        except Exception as e:
+            log(f"  reading uploadState raised: {e}")
+            return None
+
+        if state != adsk.core.UploadStates.UploadProcessing:
+            break
+        if is_cancelled():
+            return None
+
+        now = time.monotonic()
+        if now - last_heartbeat >= 5.0:
+            log(f"  still waiting on {comp_name} ({now - save_t0:.0f}s)")
+            last_heartbeat = now
+
+    if state == adsk.core.UploadStates.UploadFailed:
+        return None
+
+    try:
+        df = future.dataFile
+    except Exception as e:
+        log(f"  reading future.dataFile raised: {e}")
+        return None
+    return df
+
+
+def _save_parent_doc(parent_doc, replaced_count, log_fn, cancel_check):
+    """Commit the parent design once after the run.
+
+    Returns True on success, False on failure.
+    """
+    pre_version = None
+    try:
+        if parent_doc.dataFile and hasattr(parent_doc.dataFile, "versionNumber"):
+            pre_version = parent_doc.dataFile.versionNumber
+    except Exception:
+        pre_version = None
+
+    log_fn(f"Saving parent design (pre_version={pre_version})…")
+    try:
+        save_result = parent_doc.save(
+            f"Externalize: {replaced_count} components replaced"
+        )
+    except Exception as e:
+        log_fn(f"Parent save raised: {e}")
+        return False
+
+    ok, msg = futil.wait_for_upload(
+        save_result,
+        "parent assembly",
+        document=parent_doc,
+        pre_save_version=pre_version,
+    )
+    if not ok:
+        log_fn(f"Parent save failed: {msg}")
+        return False
+    if cancel_check and cancel_check():
+        return False
+    log_fn(msg)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Cloud folder helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_or_create_subfolder(parent_folder: adsk.core.DataFolder, name: str):
+    """Return (or create) the subfolder of `parent_folder` with the given name."""
     sub_folders = parent_folder.dataFolders
     for i in range(sub_folders.count):
         folder = sub_folders.item(i)
@@ -303,9 +771,7 @@ def _get_or_create_subfolder(
     return sub_folders.add(name)
 
 
-def _find_existing_subfolder(
-    parent_folder: adsk.core.DataFolder, name: str
-) -> adsk.core.DataFolder:
+def _find_existing_subfolder(parent_folder: adsk.core.DataFolder, name: str):
     """Return the subfolder with the given name inside parent_folder, or None."""
     sub_folders = parent_folder.dataFolders
     for i in range(sub_folders.count):
@@ -325,231 +791,163 @@ def _find_existing_cloud_file(cloud_folder: adsk.core.DataFolder, comp_name: str
     return None
 
 
-UPLOAD_TIMEOUT_SECONDS = 120
+# ---------------------------------------------------------------------------
+# Logging / resume
+# ---------------------------------------------------------------------------
 
 
-def _save_to_cloud(
-    component: adsk.fusion.Component,
-    comp_name: str,
-    cloud_folder: adsk.core.DataFolder,
-):
-    """Upload component to the cloud folder and return the resulting DataFile.
-    Returns None on failure or timeout."""
-    future = component.saveCopyAs(comp_name, cloud_folder, "", "")
-    deadline = time.monotonic() + UPLOAD_TIMEOUT_SECONDS
-    while future.uploadState == adsk.core.UploadStates.UploadProcessing:
-        if time.monotonic() > deadline:
-            futil.log(
-                f'{CMD_NAME}: Cloud upload of "{comp_name}" timed out after '
-                f"{UPLOAD_TIMEOUT_SECONDS}s — giving up."
-            )
-            return None
-        adsk.doEvents()
-
-    if future.uploadState == adsk.core.UploadStates.UploadFailed:
-        return None
-    return future.dataFile
+def _propose_default_log_filename() -> str:
+    """Generate a default log filename based on the active document name."""
+    doc = app.activeDocument
+    base_name = "externalize_log"
+    if doc and doc.dataFile:
+        base_name = doc.dataFile.name
+    elif doc and doc.name:
+        base_name = doc.name
+    base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
+    if not base_name.lower().endswith(".log"):
+        base_name += "_externalize.log"
+    return base_name
 
 
-def _externalize_single(
-    entity,
-    design: adsk.fusion.Design,
-    target_folder: adsk.core.DataFolder,
-    apply_intent: bool = True,
-):
-    """Externalize a single selected occurrence."""
-    if isinstance(entity, adsk.fusion.Occurrence):
-        occ = entity
-    elif hasattr(entity, "assemblyContext") and entity.assemblyContext:
-        occ = entity.assemblyContext
-    else:
-        ui.messageBox(
-            "Selected entity is not a component occurrence. Please select a component.",
-            CMD_NAME,
-        )
-        return
+def _default_log_path() -> str:
+    """Return the default log path used for auto logging in this command."""
+    return os.path.join(futil.default_log_directory(), _propose_default_log_filename())
 
-    comp_name = occ.component.name
-    cached_transform: adsk.core.Matrix3D = occ.transform2
-    root = design.rootComponent
 
-    saved_data_file = _find_existing_cloud_file(target_folder, comp_name)
-    if saved_data_file is not None:
-        action = "reused existing cloud file"
-        freshly_uploaded = False
-    else:
-        saved_data_file = _save_to_cloud(occ.component, comp_name, target_folder)
-        if saved_data_file is None:
-            ui.messageBox(f'Cloud upload of "{comp_name}" failed.', CMD_NAME)
+class _LogWriter:
+    """Append-on-call writer. When path is None, lines go only to futil.log
+    (which writes to the Text Command window when DEBUG is on). When path is
+    set, each call also appends one line to the file — open/write/close per
+    call, so a crash still leaves a complete trail."""
+
+    def __init__(self, path: str | None):
+        self._path = path
+
+    def __call__(self, line: str):
+        futil.log(line)
+        if self._path is None:
             return
-        action = f'saved to "{target_folder.name}"'
-        freshly_uploaded = True
-
-    # Mutate the source first (delete + re-insert), THEN open the externalized
-    # doc to apply intent. Doing it in the other order leaves cached source
-    # references straddling a document switch, which Fusion handles poorly.
-    occ.deleteMe()
-    root.occurrences.addByInsert(saved_data_file, cached_transform, True)
-
-    if apply_intent and freshly_uploaded:
-        _apply_design_intent_to_file(saved_data_file, comp_name)
-
-    ui.messageBox(
-        f'"{comp_name}" {action} and re-inserted at its original assembly position.',
-        CMD_NAME,
-    )
+        try:
+            with open(self._path, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except Exception as e:
+            futil.log(f"Failed to write log entry: {e}")
 
 
-def _externalize_all(
-    design: adsk.fusion.Design,
-    target_folder: adsk.core.DataFolder,
-    apply_intent: bool = True,
+def _write_log_header(
+    path: str,
+    mode: str,
+    *,
+    fusion_version,
+    active_data_file,
+    target_folder,
+    externalize_all,
+    resume_info,
+    runnable_total,
+    skipped_resume,
+    pending_names,
+    skip_set,
 ):
-    """Externalize every local first-level component in the active assembly.
-
-    Runs in three separated passes so cloud uploads, source mutations, and
-    document switching never interleave — interleaving them deadlocks Fusion.
-    """
-    root = design.rootComponent
-
-    # Snapshot all local first-level occurrences before modifying anything.
-    # A component is considered local when its parent design is the active design.
-    pending = []
-    for i in range(root.occurrences.count):
-        occ = root.occurrences.item(i)
-        if occ.component.parentDesign == design:
-            pending.append(
-                {
-                    "occ": occ,
-                    "component": occ.component,
-                    "comp_name": occ.component.name,
-                    "transform": occ.transform2,
-                    "data_file": None,
-                    "freshly_uploaded": False,
-                }
-            )
-
-    total = len(pending)
-    futil.log(f"{CMD_NAME}: total local components to externalize = {total}")
-    if total == 0:
-        ui.messageBox(
-            "No local first-level components were found to externalize.", CMD_NAME
+    """Open the log file in `mode` (w or a) and write the run preamble."""
+    with open(path, mode, encoding="utf-8") as fh:
+        if mode == "a":
+            fh.write("\n----- Resume attempt -----\n")
+        fh.write(
+            f"===== Externalize run started {datetime.now().isoformat()} =====\n"
         )
-        return
-
-    progress_bar = ui.progressBar
-    progress_bar.show(f"Externalizing component %v of {total}…", 1, total)
-
-    # ----- Pass 1: upload every component to cloud (no source mutation). -----
-    futil.log(f"{CMD_NAME}: Pass 1/{'3' if apply_intent else '2'} — uploading {total} components.")
-    for idx, data in enumerate(pending):
-        comp_name = data["comp_name"]
-        adsk.doEvents()
-        try:
-            existing = _find_existing_cloud_file(target_folder, comp_name)
-            if existing is not None:
-                data["data_file"] = existing
-                futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] reused existing cloud file for {comp_name}")
-            else:
-                futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] uploading {comp_name}…")
-                df = _save_to_cloud(data["component"], comp_name, target_folder)
-                if df is None:
-                    futil.log(
-                        f'{CMD_NAME}: [{idx + 1}/{total}] upload of "{comp_name}" failed — skipping.'
-                    )
-                else:
-                    data["data_file"] = df
-                    data["freshly_uploaded"] = True
-                    futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] uploaded {comp_name}")
-        except:  # pylint:disable=bare-except
-            app.log(
-                f'{CMD_NAME}: Pass 1 error on "{comp_name}":\n{traceback.format_exc()}'
-            )
-
-    # ----- Pass 2: replace each local occurrence with its cloud xref. -----
-    futil.log(f"{CMD_NAME}: Pass 2/{'3' if apply_intent else '2'} — replacing occurrences with xrefs.")
-    replaced = 0
-    for idx, data in enumerate(pending):
-        comp_name = data["comp_name"]
-        progress_bar.progressValue = idx + 1
-        adsk.doEvents()
-
-        if data["data_file"] is None:
-            continue
-
-        try:
-            futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] replacing {comp_name}…")
-            data["occ"].deleteMe()
-            root.occurrences.addByInsert(data["data_file"], data["transform"], True)
-            replaced += 1
-            futil.log(f"{CMD_NAME}: [{idx + 1}/{total}] replaced {comp_name}")
-        except:  # pylint:disable=bare-except
-            app.log(
-                f'{CMD_NAME}: Pass 2 error on "{comp_name}":\n{traceback.format_exc()}'
-            )
-
-    progress_bar.hide()
-
-    # ----- Pass 3 (optional): apply design intent to freshly-uploaded docs. -----
-    if apply_intent:
-        futil.log(f"{CMD_NAME}: Pass 3/3 — applying design intent.")
-        for idx, data in enumerate(pending):
-            if data["freshly_uploaded"] and data["data_file"] is not None:
-                adsk.doEvents()
-                _apply_design_intent_to_file(data["data_file"], data["comp_name"])
-
-    futil.log(f"{CMD_NAME}: complete. {replaced}/{total} replaced.")
-    ui.messageBox(
-        f"{replaced} of {total} local components were externalized.", CMD_NAME
-    )
+        fh.write(f"Fusion client version: {fusion_version}\n")
+        fh.write(
+            f"Active Document: {active_data_file.name} (id={active_data_file.id})\n"
+        )
+        fh.write(f"Target folder: {target_folder.name}\n")
+        fh.write(f"Externalize All: {externalize_all}\n")
+        fh.write(f"Resume requested: {resume_info.get('should_resume', False)}\n")
+        fh.write(
+            f"Components to process: {runnable_total}  "
+            f"(skipped from prior run: {skipped_resume})\n"
+        )
+        fh.write("Pending order:\n")
+        for name in pending_names:
+            marker = "  [done]" if name in skip_set else ""
+            fh.write(f"  - {name}{marker}\n")
+        fh.write("Externalize log:\n")
 
 
-def _apply_design_intent_to_file(
-    data_file: adsk.core.DataFile, comp_name: str
-):
-    """Open the externalized document, apply the appropriate design intent,
-    save, and close. Must be called BEFORE inserting the file into the source
-    assembly, otherwise the source ends up with an out-of-date xref."""
-    if data_file is None:
-        return
+def _analyze_resume_state(log_path, fusion_client_version, current_pending_names):
+    """Inspect an existing log and return whether this run should resume."""
+    result = {
+        "log_exists": False,
+        "matches_version": False,
+        "completed_successfully": False,
+        "should_resume": False,
+        "resume_skip_set": set(),
+        "status_message": "No previous log found. A full run will start.",
+    }
 
-    doc = None
+    if not log_path or not os.path.exists(log_path):
+        return result
+    result["log_exists"] = True
+
     try:
-        doc = app.documents.open(data_file, True)
-        des = adsk.fusion.Design.cast(app.activeProduct)
-        if not des:
-            return
-
-        root_comp = des.rootComponent
-        if root_comp.occurrences.count == 0:
-            intent_type = adsk.fusion.DesignIntentTypes.PartDesignIntentType
-            intent_label = "part"
-        elif root_comp.sketches.count > 0 or root_comp.bRepBodies.count > 0:
-            intent_type = adsk.fusion.DesignIntentTypes.HybridDesignIntentType
-            intent_label = "hybrid assembly"
-        else:
-            intent_type = adsk.fusion.DesignIntentTypes.AssemblyDesignIntentType
-            intent_label = "assembly"
-
-        if des.designIntent != intent_type:
-            des.designIntent = intent_type
-            futil.log(f"   {intent_label.capitalize()} intent applied to {comp_name}")
-            doc.save("")
-        else:
-            futil.log(f"   {intent_label.capitalize()} intent already set on {comp_name}")
-
-    except Exception as intent_error:
-        futil.log(
-            f"   Failed to apply design intent to {comp_name}: {intent_error}"
+        with open(log_path, "r", encoding="utf-8") as fh:
+            log_lines = fh.read().splitlines()
+    except Exception as read_error:
+        result["status_message"] = (
+            f"Found previous log but could not read it ({read_error}). A full run will start."
         )
-    finally:
-        if doc is not None:
-            doc.close(False)
+        return result
+
+    version_line = next(
+        (line for line in log_lines if line.startswith("Fusion client version:")), None
+    )
+    logged_version = ""
+    if version_line:
+        logged_version = version_line.split(":", 1)[1].strip()
+
+    if logged_version != fusion_client_version:
+        result["status_message"] = (
+            "Previous temp log is from a different Fusion client version. "
+            "A full run will start."
+        )
+        return result
+    result["matches_version"] = True
+
+    if any("Externalize completed successfully" in line for line in log_lines):
+        result["completed_successfully"] = True
+        result["status_message"] = (
+            "Previous run completed successfully. Log will be reset for a new run."
+        )
+        return result
+
+    completed = set()
+    for line in log_lines:
+        line = line.strip()
+        if not line.startswith("CHECKPOINT|REPLACE_COMPLETE|"):
+            continue
+        parts = line.split("|")
+        for part in parts[2:]:
+            if part.startswith("component="):
+                completed.add(part.split("=", 1)[1])
+                break
+
+    relevant = completed & set(current_pending_names)
+    if relevant:
+        result["should_resume"] = True
+        result["resume_skip_set"] = relevant
+        result["status_message"] = (
+            f"Resume available — {len(relevant)} of {len(current_pending_names)} already done."
+        )
+    else:
+        result["status_message"] = (
+            "Previous run did not complete; no matching checkpoints. A full run will start."
+        )
+    return result
 
 
 # Called when the command is destroyed (dialog closed).
 def command_destroy(args: adsk.core.CommandEventArgs):
     futil.log(f"{CMD_NAME} Command Destroy Event")
-
-    global local_handlers
+    global local_handlers, resume_plan
     local_handlers = []
+    resume_plan = {}

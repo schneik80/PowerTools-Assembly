@@ -4,9 +4,6 @@
 import adsk.core, adsk.fusion
 import os, re, traceback
 import time
-import sys
-import subprocess
-import tempfile
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -569,121 +566,6 @@ def hide_canvases_in_document(document):
         return f"Error hiding canvases: {str(e)}"
 
 
-def wait_for_data_file_future(
-    data_file_future,
-    context_label,
-    poll_interval_seconds=0.5,
-    document=None,
-    pre_save_version=None,
-    timeout_seconds=300,
-    settle_seconds=1.0,
-):
-    """
-    Wait for a Fusion DataFileFuture to complete and report success/failure.
-
-    :param data_file_future: Return value from Document.save (DataFileFuture or bool)
-    :param context_label: Human readable label for logging
-    :param poll_interval_seconds: Sleep interval between completion checks
-    :param document: Document that was saved (optional, used for bool fallback)
-    :param pre_save_version: Data file version before save (optional)
-    :param timeout_seconds: Maximum time to wait before giving up
-    :param settle_seconds: Stable-state settle window when version bump is unavailable
-    :return: (is_success, message)
-    """
-    if data_file_future is None:
-        return False, f"Save failed for {context_label}: save returned no result"
-
-    poll_interval = max(0.05, poll_interval_seconds)
-
-    # Some Fusion builds return bool from Document.save instead of DataFileFuture.
-    if isinstance(data_file_future, bool):
-        if not data_file_future:
-            return False, f"Save failed for {context_label}: save returned False"
-
-        if document is None:
-            return True, f"Save+upload completed for {context_label}"
-
-        start_time = time.time()
-        stable_since = None
-        stable_ready_checks = 0
-        data_file_id = None
-        try:
-            if document.dataFile:
-                data_file_id = document.dataFile.id
-        except Exception:
-            data_file_id = None
-
-        while True:
-            adsk.doEvents()
-
-            current_version = None
-            try:
-                if data_file_id:
-                    refreshed = adsk.core.Application.get().data.findFileById(data_file_id)
-                    if refreshed and hasattr(refreshed, "versionNumber"):
-                        current_version = refreshed.versionNumber
-                if current_version is None and document.dataFile and hasattr(document.dataFile, "versionNumber"):
-                    current_version = document.dataFile.versionNumber
-            except Exception:
-                current_version = None
-
-            # Prefer a version bump when available.
-            if (
-                pre_save_version is not None
-                and current_version is not None
-                and current_version > pre_save_version
-            ):
-                return (
-                    True,
-                    f"Save+upload completed for {context_label} (version {pre_save_version} -> {current_version})",
-                )
-
-            # Fallback signal for builds without version visibility changes.
-            doc_is_saved = getattr(document, "isSaved", None)
-            doc_is_modified = getattr(document, "isModified", None)
-            if doc_is_saved is True and doc_is_modified is False:
-                stable_ready_checks += 1
-                if stable_since is None:
-                    stable_since = time.time()
-                if stable_ready_checks >= 3 and (time.time() - stable_since) >= settle_seconds:
-                    return True, f"Save+upload completed for {context_label}"
-            else:
-                stable_ready_checks = 0
-                stable_since = None
-
-            if timeout_seconds > 0 and (time.time() - start_time) >= timeout_seconds:
-                return (
-                    False,
-                    f"Save wait timed out for {context_label} after {timeout_seconds} seconds",
-                )
-
-            time.sleep(poll_interval)
-
-    if not hasattr(data_file_future, "isComplete"):
-        return (
-            False,
-            f"Save failed for {context_label}: unsupported save result type {type(data_file_future).__name__}",
-        )
-
-    start_time = time.time()
-    while not data_file_future.isComplete:
-        adsk.doEvents()
-        if timeout_seconds > 0 and (time.time() - start_time) >= timeout_seconds:
-            return (
-                False,
-                f"Save wait timed out for {context_label} after {timeout_seconds} seconds",
-            )
-        time.sleep(poll_interval)
-
-    if data_file_future.error:
-        error_description = getattr(
-            data_file_future, "errorDescription", "Unknown upload error"
-        )
-        return False, f"Save failed for {context_label}: {error_description}"
-
-    return True, f"Save+upload completed for {context_label}"
-
-
 def execute_command_with_timeout(
     command_definition,
     command_label,
@@ -713,35 +595,6 @@ def execute_command_with_timeout(
         time.sleep(poll_interval)
 
 
-def open_live_log_viewer(log_file_path):
-    """
-    Open a platform-native live log viewer for the given file.
-
-    macOS: Console.app via `open -a Console <path>` — natively follows live log files.
-    Windows: PowerShell + Get-Content -Wait
-    """
-    try:
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-a", "Console", log_file_path])
-            return True, "Opened live log viewer in Console.app"
-
-        if sys.platform == "win32":
-            command = f'Get-Content -Path "{log_file_path}" -Wait'
-            subprocess.Popen(
-                [
-                    "powershell",
-                    "-NoExit",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-Command",
-                    command,
-                ]
-            )
-            return True, "Opened live log viewer in PowerShell"
-
-        return False, "Live log viewer auto-open is currently supported on macOS and Windows only"
-    except Exception as e:
-        return False, f"Failed to open live log viewer: {e}"
 
 
 def command_execute(args: adsk.core.CommandEventArgs):
@@ -942,7 +795,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 futil.log(f"Failed to write initial log: {log_e}")
 
             if open_log_view and file_path:
-                _, open_msg = open_live_log_viewer(file_path)
+                _, open_msg = futil.open_live_log_viewer(file_path)
                 futil.log(open_msg)
                 write_log_entry(open_msg)
 
@@ -1212,12 +1065,13 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
             )
 
-            save_ok, save_msg = wait_for_data_file_future(
+            save_ok, save_msg = futil.wait_for_upload(
                 data_file_future,
                 component_name,
-                pause_time,
+                poll_interval_seconds=pause_time,
                 document=active_doc,
                 pre_save_version=pre_save_version,
+                log_fn=write_log_entry,
             )
             futil.log(f"   {save_msg}")
             write_log_entry(f"   {save_msg}")
@@ -1303,12 +1157,13 @@ def command_execute(args: adsk.core.CommandEventArgs):
         final_save_future = main_doc.save(
             f"Auto save in Fusion: {appVersionBuild}, by rebuild assembly."
         )
-        final_save_ok, final_save_msg = wait_for_data_file_future(
+        final_save_ok, final_save_msg = futil.wait_for_upload(
             final_save_future,
             "main assembly",
-            pause_time,
+            poll_interval_seconds=pause_time,
             document=main_doc,
             pre_save_version=main_pre_save_version,
+            log_fn=write_log_entry,
         )
         futil.log(final_save_msg)
         write_log_entry(final_save_msg)
@@ -1407,13 +1262,6 @@ def _propose_default_log_filename() -> str:
     return base_name
 
 
-def _default_log_directory() -> str:
-    """Return the default directory for log files based on the current OS."""
-    if sys.platform in ("darwin", "win32"):
-        return tempfile.gettempdir()
-    return os.path.expanduser("~/Documents")
-
-
 def _default_temp_log_path() -> str:
     """Return the default log path used for auto logging in this command."""
     app = adsk.core.Application.get()
@@ -1426,7 +1274,7 @@ def _default_temp_log_path() -> str:
     base_name = re.sub(r"[\\/:*?\"<>|]+", "_", base_name)
     if not base_name.lower().endswith(".log"):
         base_name += ".log"
-    return os.path.join(_default_log_directory(), base_name)
+    return os.path.join(futil.default_log_directory(), base_name)
 
 
 def _extract_latest_bottom_up_order(log_lines):
@@ -1598,7 +1446,7 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
             dlg.title = "Save log file"
             dlg.filter = "Text files (*.txt);;All Files (*.*)"
             dlg.isMultiSelectEnabled = False
-            dlg.initialDirectory = _default_log_directory()
+            dlg.initialDirectory = futil.default_log_directory()
             dlg.initialFilename = _propose_default_log_filename()
 
             # If user selected a file, update the path input
