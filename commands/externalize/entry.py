@@ -447,8 +447,23 @@ class _RunnerHandler(adsk.core.CustomEventHandler):
         total = run["total"]
         skipped_resume = run["skipped_resume"]
 
+        # Use the lightweight status-bar progress bar (NOT the modal
+        # ProgressDialog — that one was tested and didn't help; we want
+        # non-modal feedback that doesn't intercept events).
+        progress_bar = ui.progressBar
         try:
-            replaced = self._run_loop(runnable, target_folder, total, log_writer)
+            try:
+                progress_bar.show(
+                    f"{CMD_NAME}: externalizing %v of %m…", 0, max(total, 1)
+                )
+            except Exception:
+                # Status-bar progress is best-effort; never fail the run
+                # because of it.
+                pass
+
+            replaced = self._run_loop(
+                runnable, target_folder, total, log_writer, progress_bar
+            )
             self._finalize(
                 parent_doc, replaced, total, skipped_resume, log_writer
             )
@@ -462,8 +477,13 @@ class _RunnerHandler(adsk.core.CustomEventHandler):
                 )
             except Exception:
                 pass
+        finally:
+            try:
+                progress_bar.hide()
+            except Exception:
+                pass
 
-    def _run_loop(self, runnable, target_folder, total, log_writer):
+    def _run_loop(self, runnable, target_folder, total, log_writer, progress_bar):
         design = adsk.fusion.Design.cast(app.activeProduct)
         if design is None:
             log_writer("ERROR: no active design when handler started")
@@ -475,6 +495,12 @@ class _RunnerHandler(adsk.core.CustomEventHandler):
 
         for idx, data in enumerate(runnable, 1):
             comp_name = data["comp_name"]
+
+            try:
+                progress_bar.message = f"Externalizing {comp_name} (%v of %m)"
+                progress_bar.progressValue = idx - 1
+            except Exception:
+                pass
 
             try:
                 df = _find_existing_cloud_file(target_folder, comp_name)
@@ -513,6 +539,11 @@ class _RunnerHandler(adsk.core.CustomEventHandler):
                 log_writer(
                     f"CHECKPOINT|REPLACE_COMPLETE|component={comp_name}|index={idx}"
                 )
+
+                try:
+                    progress_bar.progressValue = idx
+                except Exception:
+                    pass
 
             except Exception:
                 log_writer(
