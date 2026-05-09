@@ -26,7 +26,7 @@ The Externalize command converts one or more local (inline) components in the ac
 ### Externalize a single component
 
 1. Open the Autodesk Fusion Design workspace with an active saved assembly.
-2. On the **PowerTools Assembly** panel, select **Externalize**.
+2. On the **Power Tools** panel, select **Externalize**.
 3. In the dialog's **Main** tab, select the component occurrence you want to externalize in the canvas or browser.
 4. In the **Save Location** dropdown, choose one of the following:
 
@@ -105,7 +105,7 @@ Externalize completed successfully. 9 of 9 replaced this run; 0 from prior run.
 
 ## Access
 
-The **Externalize** command is located on the **PowerTools Assembly** panel in the Autodesk Fusion Design workspace.
+The **Externalize** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ## Architecture
 

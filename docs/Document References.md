@@ -18,14 +18,14 @@ The Document References command displays a dialog that lists all documents relat
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design must be active.
+- An Autodesk Fusion 3D Design must be active.
 - The active document must be saved to an Autodesk Hub.
 - An internet connection is required. The command displays a message if you are offline.
 
 ## How to use Document References
 
 1. Open the Autodesk Fusion Design workspace with an active saved design.
-2. On the **Utilities** tab, in the **Tools** panel, select **Document References**.
+2. On the **Utilities** tab, in the **Power Tools** panel, select **Document References**.
 3. The dialog opens and organizes references into the following groups:
 
    | Group | Description |
@@ -77,7 +77,7 @@ Use these traces to verify that drawings and Related Data documents are being ex
 
 ## Access
 
-The **Document References** command is located on the **Utilities** tab, in the **Tools** panel of the Autodesk Fusion Design workspace.
+The **Document References** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ![Toolbar access](assets/docrefs_002.png)
 
@@ -107,7 +107,7 @@ C4Component
   title Document References – Component View
 
   Person(user, "Design Engineer")
-  Component(cmd, "refrences/entry.py", "PowerTools Command", "Registers Utilities panel button; builds multi-group table dialog with thumbnails and action buttons")
+  Component(cmd, "refrences/entry.py", "PowerTools Command", "Registers the Power Tools panel button; builds the multi-group table dialog with thumbnails and action buttons")
   Component(api_doc, "adsk.core.Document / DataFile", "Fusion API", "Provides parentReferences and childReferences collections at each level of the graph")
   Component(roots, "_collect_roots()", "Internal Function", "Recursive depth-first walk of parentReferences; filters drawings and Related Data; deduplicates by file ID; emits [Roots] trace log at every decision point")
   Component(thumb, "Thumbnail Resolver", "Internal Logic", "Tries component.createThumbnail then DataFile.thumbnail future; caches results in temp directory")
@@ -124,6 +124,39 @@ C4Component
   Rel(cmd, dialog, "Builds and displays grouped table dialog")
   Rel(user, dialog, "Selects open-in-Fusion or open-in-browser buttons")
   Rel(dialog, browser, "Launches browser with fusionWebURL on web button press")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Panel as Power Tools panel
+  participant Cmd as Document References
+  participant Roots as _collect_roots()
+  participant API as Fusion API / DataFile
+  participant Hub as Autodesk Hub
+  participant Browser as System Web Browser
+
+  User->>Panel: Click Document References
+  Panel->>Cmd: command_created fires
+  Cmd->>API: Read activeDocument.dataFile
+  Cmd->>API: parentReferences / childReferences / drawings / fasteners
+  Cmd->>Roots: Walk parent chain for each immediate parent
+  Roots->>API: parentReferences at each recursion level
+  Roots-->>Cmd: Deduplicated root DataFile list
+  Cmd->>Hub: Resolve thumbnails for every listed document
+  Hub-->>Cmd: Thumbnail futures
+  Cmd-->>User: Show grouped dialog (Roots, Used In, Uses, Drawings, Fasteners, Related Data)
+  alt User clicks Open in Fusion
+    User->>Cmd: Click open
+    Cmd->>API: documents.open(DataFile)
+  else User clicks Open in browser
+    User->>Cmd: Click web
+    Cmd->>Browser: Launch DataFile.fusionWebURL
+  end
+  User->>Cmd: Close
 ```
 
 ---

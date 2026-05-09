@@ -29,7 +29,7 @@ The Global Parameters command creates and manages a shared parameter set for the
 5. Use the table to define your parameters:
 
    | Column | Description |
-  | --- | --- |
+   | --- | --- |
    | (checkbox) | Select a row to enable the **Delete** toolbar button |
    | Name | Parameter name — must start with a letter; letters, digits, `_`, `"`, `$`, `°`, `µ` are allowed |
    | Value | Numeric value |
@@ -58,7 +58,7 @@ If you cancelled the dialog in a previous session before saving, the command det
 
 ## Access
 
-The **Global Parameters** command is on the **Power Tools** panel in the **Tools** tab of the Autodesk Fusion Design workspace.
+The **Global Parameters** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ## Parameter name rules
 
@@ -217,3 +217,11 @@ sequenceDiagram
     Dialog->>Cache: Write pending cache with current table state
   end
 ```
+
+---
+
+[Back to PowerTools Assembly](../README.md)
+
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

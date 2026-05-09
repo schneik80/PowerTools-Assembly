@@ -12,7 +12,7 @@ The Document Refresh command closes the active document, retrieves the latest ve
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design must be active.
+- An Autodesk Fusion 3D Design must be active.
 - The document must be saved to an Autodesk Hub (cloud project). Local documents that are not associated with a Hub cannot be refreshed.
 - Unsaved local changes will be discarded. Save any pending work before running this command.
 
@@ -62,6 +62,29 @@ C4Component
   Rel(cmd, api_doc, "Reads dataFile.id of the active document")
   Rel(cmd, api_app, "Calls close(False) then documents.open(dataFile)")
   Rel(api_app, hub, "Retrieves the latest document version on open")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant QAT as QAT › File menu
+  participant Cmd as Refresh Active Document
+  participant API as Fusion API
+  participant Hub as Autodesk Hub
+
+  User->>QAT: Click Refresh Active Document
+  QAT->>Cmd: command_created fires
+  Cmd->>API: Read activeDocument.dataFile.id
+  Cmd->>API: app.data.findFileById(id)
+  API-->>Cmd: DataFile reference
+  Cmd->>API: activeDocument.close(False)
+  Cmd->>API: app.documents.open(DataFile)
+  API->>Hub: Fetch latest document version
+  Hub-->>API: Document content
+  API-->>User: Document reopens at latest Hub version
 ```
 
 ---

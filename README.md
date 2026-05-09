@@ -27,17 +27,17 @@ The following commands are included in this add-in:
 
 | Command | Category | Location | Description |
 |---|---|---|---|
-| [Document References](./docs/Document%20References.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Tools | Displays a dialog listing all documents related to the active design, organized by relationship type, including recursive root assembly detection. |
+| [Document References](./docs/Document%20References.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Power Tools | Displays a dialog listing all documents related to the active design, organized by relationship type, including recursive root assembly detection. |
 | [Reference Manager](./docs/Reference%20Manager.md) | Data Workflow | Quick Access Toolbar | Opens the Fusion Reference Manager dialog directly from the QAT for quick access to reference management. |
-| [Externalize](./docs/Externalize.md) | Data Workflow | Design &rsaquo; PowerTools Assembly panel | Converts local (inline) components into independent cloud documents and re-inserts them at their original positions. |
+| [Externalize](./docs/Externalize.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Power Tools | Converts local (inline) components into independent cloud documents and re-inserts them at their original positions. |
 | [Get and Update](./docs/Get%20and%20Update.md) | Data Workflow | Quick Access Toolbar | Retrieves the latest versions of all child references and updates all out-of-date assembly contexts in one step. |
 | [Document Refresh](./docs/Document%20Refresh.md) | Data Workflow | QAT &rsaquo; File dropdown | Closes and reopens the active document to load the latest version from the Hub. |
-| [Bottom-Up Update](./docs/Bottom-Up%20Update.md) | Data Workflow | Design &rsaquo; PowerTools Assembly panel | Saves and updates all references in the open assembly from the bottom up, processing components in dependency order. |
-| [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
-| [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Visual node editor for designing an assembly hierarchy on a new, empty document, then generating every external component with the correct design intent in one step. |
-| [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; PowerTools Assembly panel | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
-| [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; PowerTools Assembly panel | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
-| [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; PowerTools Assembly panel | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
+| [Bottom-Up Update](./docs/Bottom-Up%20Update.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Power Tools | Saves and updates all references in the open assembly from the bottom up, processing components in dependency order. |
+| [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Power Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
+| [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Visual node editor for designing an assembly hierarchy on a new, empty document, then generating every external component with the correct design intent in one step. |
+| [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
+| [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
+| [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
 | [Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md) | Global Parameters | QAT &rsaquo; File &rsaquo; PowerTools Settings | Force a full Hub scan and rewrite the local `gp_folder` / `gp_docs` caches for the active project when parameter sets appear missing or stale. |
 
 ---

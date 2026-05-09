@@ -13,7 +13,7 @@ The Get and Update command retrieves the latest versions of all child references
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design with external references must be active.
+- An Autodesk Fusion 3D Design with external references must be active.
 - The document must be saved to an Autodesk Hub.
 
 ## How to use Get and Update
@@ -63,6 +63,29 @@ C4Component
   Rel(cmd, get_latest, "Executes via ui.commandDefinitions")
   Rel(cmd, ctx_update, "Executes via ui.commandDefinitions")
   Rel(get_latest, hub, "Fetches latest reference versions")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant QAT as Quick Access Toolbar
+  participant Cmd as Get and Update
+  participant Get as GetAllLatestCmd
+  participant Ctx as ContextUpdateAllFromParentCmd
+  participant Hub as Autodesk Hub
+
+  User->>QAT: Click Get and Update
+  QAT->>Cmd: command_created fires
+  Cmd->>Get: ui.commandDefinitions.itemById('GetAllLatestCmd').execute()
+  Get->>Hub: Fetch newest version for each child reference
+  Hub-->>Get: Updated reference versions
+  Get-->>Cmd: Latest references downloaded
+  Cmd->>Ctx: ui.commandDefinitions.itemById('ContextUpdateAllFromParentCmd').execute()
+  Ctx-->>Cmd: Assembly contexts refreshed
+  Cmd-->>User: Active assembly is current
 ```
 
 ---

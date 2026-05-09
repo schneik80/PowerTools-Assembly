@@ -20,7 +20,7 @@ The Bottom-Up Update command traverses the active assembly hierarchy, then opens
 
 Before running the Bottom-Up Update command, confirm the following:
 
-- A Autodesk Fusion 3D Design is active.
+- An Autodesk Fusion 3D Design is active.
 - The active document is saved to an Autodesk Hub.
 - The active document contains external references to other components.
 - You have write access to all component files that will be processed.
@@ -28,7 +28,7 @@ Before running the Bottom-Up Update command, confirm the following:
 ## How to use Bottom-Up Update
 
 1. Open the Autodesk Fusion Design workspace with an active saved assembly that contains external references.
-2. On the **Utilities** tab, in the **Tools** panel, select **Bottom-up Update**.
+2. On the **Utilities** tab, in the **Power Tools** panel, select **Bottom-up Update**.
 3. Review the **Run status** field on the Main tab. If a previous incomplete run is detected and the component list matches, the command will offer to resume from the last checkpoint.
 4. Configure the options in the three-tab dialog (see [Command options](#command-options) below).
 5. Select **OK** to begin processing.
@@ -217,6 +217,43 @@ C4Component
   Rel(cmd, intent, "Applies classification when Apply Design Doc Intent is enabled")
   Rel(cmd, logger, "Writes event, checkpoint, and summary entries")
   Rel(cmd, logviewer, "Launches native log viewer after log file initialization")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Cmd as Bottom-Up Update
+  participant Resume as _analyze_resume_state()
+  participant Order as traverse / sort_dag_bottom_up
+  participant API as Fusion API
+  participant Wait as wait_for_upload()
+  participant Hub as Autodesk Hub
+  participant Log as Log file
+
+  User->>Cmd: Open command
+  Cmd->>Resume: Inspect existing temp log
+  Resume-->>Cmd: Run-status verdict
+  Cmd-->>User: Show three-tab dialog with run status
+  User->>Cmd: Configure options and click OK
+  Cmd->>Order: Build DAG and produce bottom-up list
+  Order-->>Cmd: Ordered component list
+  loop For each component (resume index onward)
+    Cmd->>API: documents.open(component DataFile)
+    Cmd->>API: updateAllReferences / computeAll / visibility / design intent
+    Cmd->>API: document.save("Bottom-up update …")
+    Cmd->>Wait: Block until upload confirmed
+    Wait->>Hub: Poll uploadState / version bump
+    Hub-->>Wait: Upload confirmed
+    Cmd->>Log: CHECKPOINT|SAVE_UPLOAD_COMPLETE|component=…
+    Cmd->>API: Close component (root assembly stays open)
+  end
+  Cmd->>API: Get All Latest + Update All From Parent on root
+  Cmd->>API: Save root assembly
+  Cmd->>Wait: Confirm root upload
+  Cmd-->>User: Summary message and final log entry
 ```
 
 ### Topological sort

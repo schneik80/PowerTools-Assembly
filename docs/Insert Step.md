@@ -13,7 +13,7 @@ The Insert STEP File command lets you browse your local computer for a STEP or F
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design must be active.
+- An Autodesk Fusion 3D Design must be active.
 - The STEP or F3D file must be accessible on the local file system.
 
 ## How to use Insert STEP File
@@ -68,6 +68,30 @@ C4Component
   Rel(cmd, file_dlg, "Displays file open dialog with STEP/F3D filter")
   Rel(file_dlg, fs, "User selects a file")
   Rel(cmd, text_cmd, "Executes with quoted file path")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Panel as Assembly / Solid panel
+  participant Cmd as Insert STEP File
+  participant Dlg as adsk.core.FileDialog
+  participant FS as Local File System
+  participant Text as Fusion.ImportComponent
+
+  User->>Panel: Click Insert STEP file…
+  Panel->>Cmd: command_created fires
+  Cmd->>Dlg: createFileDialog with STEP filter
+  Dlg-->>User: Display OS file browser
+  User->>Dlg: Choose .stp / .step / .f3d file
+  Dlg-->>Cmd: filename
+  Cmd->>Text: executeTextCommand("Fusion.ImportComponent <filename>")
+  Text->>FS: Read file content
+  FS-->>Text: Geometry data
+  Text-->>User: Inserted as inline component at origin
 ```
 
 ---

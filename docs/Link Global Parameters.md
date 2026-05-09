@@ -24,7 +24,7 @@ The Link Global Parameters command derives a parameter set from a shared paramet
 4. The preview table updates to show the parameters in the selected set:
 
    | Column | Description |
-  | --- | --- |
+   | --- | --- |
    | Name | Parameter name as defined in the parameter set document |
    | Expression | Stored expression (e.g. `25.4 mm`) |
    | Unit | Unit string |
@@ -39,7 +39,7 @@ The command derives the parameter set document into the active design. All param
 ## Access
 
 
-The **Link Global Parameters** command is on the **Power Tools** panel in the **Tools** tab of the Autodesk Fusion Design workspace.
+The **Link Global Parameters** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ## Refresh Global Parameters Cache
 
@@ -196,3 +196,11 @@ sequenceDiagram
   Dialog->>Hub: Close parameter set document
   Dialog->>ActiveDoc: Re-activate active document
 ```
+
+---
+
+[Back to PowerTools Assembly](../README.md)
+
+---
+
+*Copyright © 2026 IMA LLC. All rights reserved.*

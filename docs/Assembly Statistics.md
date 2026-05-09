@@ -17,13 +17,13 @@ The Assembly Statistics command displays a summary of the structure, component c
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design must be active.
+- An Autodesk Fusion 3D Design must be active.
 - The active document must be saved.
 
 ## How to use Assembly Statistics
 
 1. Open the Autodesk Fusion Design workspace.
-2. On the **Utilities** tab, in the **Tools** panel, select **Assembly Statistics**.
+2. On the **Utilities** tab, in the **Power Tools** panel, select **Assembly Statistics**.
 3. Review the statistics displayed in the dialog.
 4. Select **Close** to dismiss the dialog.
 
@@ -46,7 +46,7 @@ The dialog reports the following values:
 
 ## Access
 
-The **Assembly Statistics** command is located on the **Utilities** tab, in the **Tools** panel of the Autodesk Fusion Design workspace.
+The **Assembly Statistics** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ![Toolbar access](assets/assemblystats_002.png)
 
@@ -73,7 +73,7 @@ C4Component
   title Assembly Statistics – Component View
 
   Person(user, "Design Engineer")
-  Component(cmd, "assemblystats/entry.py", "PowerTools Command", "Registers button in Utilities > Tools panel and handles command lifecycle")
+  Component(cmd, "assemblystats/entry.py", "PowerTools Command", "Registers button in the Power Tools panel and handles command lifecycle")
   Component(api_design, "adsk.fusion.Design", "Fusion API", "Provides allComponents, rootComponent, assemblyConstraints, joints")
   Component(api_doc, "adsk.core.Application / Document", "Fusion API", "Provides documentReferences and text command execution")
   Component(text_cmd, "Component.AnalyseHierarchy", "Fusion Text Command", "Returns assembly depth and instance hierarchy text output")
@@ -83,6 +83,29 @@ C4Component
   Rel(cmd, api_doc, "Reads out-of-date references and timeline contexts")
   Rel(cmd, text_cmd, "Executes to get hierarchy depth and instance data")
   Rel(cmd, user, "Displays results in modal message dialog")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Panel as Power Tools panel
+  participant Cmd as Assembly Statistics
+  participant API as Fusion API
+  participant Text as Fusion Text Commands
+
+  User->>Panel: Click Assembly Statistics
+  Panel->>Cmd: command_created fires
+  Cmd->>API: design.allComponents, rootComponent.occurrences
+  Cmd->>API: rootComponent.joints / assemblyConstraints
+  Cmd->>API: documentReferences (out-of-date count)
+  Cmd->>Text: Execute Component.AnalyseHierarchy
+  Text-->>Cmd: Depth and instance hierarchy text
+  Cmd->>Cmd: Aggregate counts and group joints by type
+  Cmd-->>User: Show summary message dialog
+  User->>Cmd: Click Close
 ```
 
 ---

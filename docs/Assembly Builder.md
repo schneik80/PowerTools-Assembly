@@ -44,7 +44,7 @@ The command walks the graph top-down and calls `addNewExternalComponent` for eac
 
 ## Access
 
-The **Assembly Builder** command is located on the **Power Tools** panel in the Autodesk Fusion Design workspace.
+The **Assembly Builder** command is located on the **Utilities** tab, in the **Power Tools** panel of the Autodesk Fusion Design workspace.
 
 ## Architecture
 

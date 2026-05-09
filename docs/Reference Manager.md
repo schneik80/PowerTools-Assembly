@@ -14,7 +14,7 @@ The Reference Manager command opens the Autodesk Fusion Reference Manager dialog
 
 ## Prerequisites
 
-- A Autodesk Fusion 3D Design must be active.
+- An Autodesk Fusion 3D Design must be active.
 - The document must contain at least one external reference.
 
 ## How to use Reference Manager
@@ -73,6 +73,30 @@ C4Component
   Rel(cmd, ref_mgr_cmd, "Executes via ui.commandDefinitions")
   Rel(ref_mgr_cmd, hub, "Retrieves and updates reference version data")
   Rel(ref_mgr_cmd, user, "Displays Reference Manager dialog")
+```
+
+### User flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant QAT as Quick Access Toolbar
+  participant Cmd as Reference Manager
+  participant RefMgr as ReferenceManagerCmd
+  participant Hub as Autodesk Hub
+
+  User->>QAT: Click Reference Manager
+  QAT->>Cmd: command_created fires
+  Cmd->>RefMgr: ui.commandDefinitions.itemById('ReferenceManagerCmd').execute()
+  RefMgr->>Hub: Read reference list and version history
+  Hub-->>RefMgr: Reference metadata
+  RefMgr-->>User: Display Reference Manager dialog
+  User->>RefMgr: Update all / update one / pick version / open
+  RefMgr->>Hub: Apply selected reference updates
+  Hub-->>RefMgr: New references resolved
+  User->>RefMgr: Close dialog
+  RefMgr-->>Cmd: Dialog dismissed
 ```
 
 ---
