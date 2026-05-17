@@ -34,7 +34,7 @@ The following commands are included in this add-in:
 | [Document Refresh](./docs/Document%20Refresh.md) | Data Workflow | QAT &rsaquo; File dropdown | Closes and reopens the active document to load the latest version from the Hub. |
 | [Bottom-Up Update](./docs/Bottom-Up%20Update.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Power Tools | Saves and updates all references in the open assembly from the bottom up, processing components in dependency order. |
 | [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Power Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
-| [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Visual node editor for designing an assembly hierarchy on a new, empty document, then generating every external component with the correct design intent in one step. |
+| [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Visual node editor for designing an assembly hierarchy on a new or empty document, then generating every external component — with correct design intent, shared references, and derived global parameters — in one step. |
 | [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
 | [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
 | [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
@@ -134,13 +134,15 @@ For full usage details, see [Assembly Statistics](./docs/Assembly%20Statistics.m
 
 **[Assembly Builder](./docs/Assembly%20Builder.md)** opens a visual node editor (powered by [Drawflow](https://github.com/jerosoler/Drawflow)) that lets you plan an assembly hierarchy before any components exist, then generates every external component in one step with the correct design intent applied automatically.
 
-- Add **Assembly**, **Part**, and **Hybrid** nodes by clicking them in the sidebar.
-- Connect nodes by dragging from parent output ports (bottom) to child input ports (top).
-- Share a single child across multiple parents — the command saves once to establish cloud references and then reuses them via `addByInsert`.
-- Double-click any node to rename it; the name is applied to the generated Fusion component.
-- Built-in zoom, pan, and fit-to-view controls; palette theme follows the Fusion UI theme.
+- Add **Assembly**, **Part**, and **Hybrid** nodes from the sidebar; with a node selected, a new node is auto-connected as its child.
+- Connect nodes by dragging from parent output ports (bottom) to child input ports (top); generous hit targets make wiring easy.
+- Share a single child across multiple parents — the command establishes cloud references and reuses them via `addByInsert`.
+- Add a **Global Parameters** node for any parameter set in the project and link it to the components that should derive it.
+- **Arrange** auto-lays-out the graph; double-click any node to rename it (the name becomes the Fusion component name).
+- When the design has shared parts or global parameters, a banner prompts you to save first and **Create Assembly** stays disabled until you do.
+- Built-in zoom, pan, and fit-to-view controls; palette theme follows the Fusion UI theme (including "match OS").
 
-**Requirements:** An active Fusion 3D Design that is new and unsaved, has Assembly or Hybrid design intent, and has no root-level children.
+**Requirements:** An active Fusion 3D Design with Assembly or Hybrid design intent and no root-level children. The document must be new (unsaved) **or** a saved document that is still empty (no features or components).
 
 For full usage details, see [Assembly Builder](./docs/Assembly%20Builder.md).
 
