@@ -40,20 +40,21 @@ def log(
     Arguments:
     message -- The message to log.
     level -- The logging severity level.
-    force_console -- Forces the message to be written to the Text Command window.
+    force_console -- Retained for backward compatibility. Messages are always
+                     written to the Fusion Text Commands window now, so this
+                     no longer needs to be set.
     """
-    # Always print to console, only seen through IDE.
+    # Goes to the attached debugger / IDE stdout only.
     print(message)
 
-    # Log all errors to Fusion log file.
+    # Errors are also persisted to the Fusion log file.
     if level == adsk.core.LogLevels.ErrorLogLevel:
-        log_type = adsk.core.LogTypes.FileLogType
-        app.log(message, level, log_type)
+        app.log(message, level, adsk.core.LogTypes.FileLogType)
 
-    # If config.DEBUG is True write all log messages to the console.
-    if DEBUG or force_console:
-        log_type = adsk.core.LogTypes.ConsoleLogType
-        app.log(message, level, log_type)
+    # Always write to the Fusion Text Commands window. This is the user-facing
+    # log; gating it on config.DEBUG (a value snapshotted at import time) made
+    # messages silently vanish in release builds.
+    app.log(message, level, adsk.core.LogTypes.ConsoleLogType)
 
 
 def clipText(linkText):

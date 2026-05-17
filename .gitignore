@@ -158,3 +158,6 @@ data.json
 hub.json
 commands/relateddata/docs.json
 commands/relateddata/data.json
+
+# Generated per-launch palette init state (Assembly Builder)
+commands/assemblybuilder/resources/html/init.js
