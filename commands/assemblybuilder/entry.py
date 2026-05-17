@@ -19,7 +19,6 @@
 import json
 import os
 import time
-import traceback
 
 import adsk.core
 import adsk.fusion
@@ -377,7 +376,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
             graph_data = json.loads(html_args.data)
             message = create_assembly_from_graph(graph_data)
         except Exception:
-            futil.log(f"Assembly creation failed:\n{traceback.format_exc()}")
+            futil.handle_error(CMD_NAME)
             message = "Error: Assembly creation failed. See the Text Commands log for details."
 
         # Show every outcome as a native Fusion dialog rather than the

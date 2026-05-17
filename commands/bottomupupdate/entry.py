@@ -1459,4 +1459,4 @@ def on_input_changed(args: adsk.core.InputChangedEventArgs):
     except Exception:
         ui = adsk.core.Application.get().userInterface
         if ui:
-            ui.messageBox("Input handling failed:\n{}".format(traceback.format_exc()))
+            futil.handle_error(CMD_NAME, show_message_box=True)

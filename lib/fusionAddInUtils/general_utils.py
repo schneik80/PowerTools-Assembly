@@ -23,7 +23,7 @@ ui = app.userInterface
 try:
     from ... import config
 
-    DEBUG = config.DEBUG
+    DEBUG = getattr(config, "DEBUG", False)
     PERF_TRACE = getattr(config, "PERF_TRACE", False)
 except Exception:
     DEBUG = False
@@ -37,13 +37,20 @@ def log(
 ):
     """Utility function to easily handle logging in your app.
 
+    All logging is gated on config.DEBUG: stdout, the Fusion log file, and
+    the Fusion Text Commands window are only written when config.DEBUG is
+    True. When DEBUG is False this function is a no-op.
+
     Arguments:
     message -- The message to log.
     level -- The logging severity level.
-    force_console -- Retained for backward compatibility. Messages are always
-                     written to the Fusion Text Commands window now, so this
-                     no longer needs to be set.
+    force_console -- Retained for backward compatibility. It no longer
+                     overrides the config.DEBUG gate.
     """
+    # Every log destination below is gated on config.DEBUG.
+    if not DEBUG:
+        return
+
     # Goes to the attached debugger / IDE stdout only.
     print(message)
 
@@ -51,9 +58,7 @@ def log(
     if level == adsk.core.LogLevels.ErrorLogLevel:
         app.log(message, level, adsk.core.LogTypes.FileLogType)
 
-    # Always write to the Fusion Text Commands window. This is the user-facing
-    # log; gating it on config.DEBUG (a value snapshotted at import time) made
-    # messages silently vanish in release builds.
+    # User-facing log in the Fusion Text Commands window.
     app.log(message, level, adsk.core.LogTypes.ConsoleLogType)
 
 

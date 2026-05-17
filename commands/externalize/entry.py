@@ -276,7 +276,7 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
 
     except Exception:
         if ui:
-            ui.messageBox(f"Input handling failed:\n{traceback.format_exc()}")
+            futil.handle_error(CMD_NAME, show_message_box=True)
 
 
 # Called when the user clicks OK in the command dialog.

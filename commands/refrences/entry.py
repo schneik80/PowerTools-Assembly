@@ -460,7 +460,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     except Exception:
         if ui:
-            ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
+            futil.handle_error(CMD_NAME, show_message_box=True)
 
 
 def on_input_changed(args: adsk.core.InputChangedEventArgs):

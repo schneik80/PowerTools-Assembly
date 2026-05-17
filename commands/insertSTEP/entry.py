@@ -2,7 +2,7 @@
 # Copyright (C) 2022-2026 IMA LLC
 
 import adsk.core, adsk.fusion
-import os, traceback
+import os
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -131,6 +131,6 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     except:
         if ui:
-            ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
+            futil.handle_error(CMD_NAME, show_message_box=True)
 
     futil.log(f"{CMD_NAME} Command Completed Event")

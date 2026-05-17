@@ -2,7 +2,7 @@
 # Copyright (C) 2022-2026 IMA LLC
 
 import adsk.core, adsk.fusion
-import os, re, traceback
+import os, re
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -139,9 +139,9 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             out_of_date_refs = sum(
                 1 for ref in app.activeDocument.documentReferences if ref.isOutOfDate
             )
-            adsk.core.Application.log(f"Out of date references: {out_of_date_refs}")
+            futil.log(f"Out of date references: {out_of_date_refs}")
         except Exception as e:
-            adsk.core.Application.log(f"Error counting out of date references: {e}")
+            futil.log(f"Error counting out of date references: {e}")
 
         # Get the total number of unique components and total components.
         total_unique = (
@@ -184,7 +184,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
             )
         except:
             docContexts = f"<i>Error. Unable to retrieve timeline contexts.</i>"
-            adsk.core.Application.log("Error retrieving timeline contexts.")
+            futil.log("Error retrieving timeline contexts.")
 
         docConstraints = rootComp.assemblyConstraints.count
         docTangents = rootComp.tangentRelationships.count
@@ -230,7 +230,7 @@ def command_execute(args: adsk.core.CommandCreatedEventArgs):
 
     except:
         if ui:
-            ui.messageBox("Failed:\n{}".format(traceback.format_exc()))
+            futil.handle_error(CMD_NAME, show_message_box=True)
 
 
 # This function will be called when the user completes the command.
