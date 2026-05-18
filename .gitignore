@@ -161,3 +161,4 @@ commands/relateddata/data.json
 
 # Generated per-launch palette init state (Assembly Builder)
 commands/assemblybuilder/resources/html/init.js
+.claude/settings.json
