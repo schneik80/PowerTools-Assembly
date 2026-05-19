@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2022-2026 IMA LLC
 
-import adsk.core
+import json
 import os
 import os.path
-import json
+
+import adsk.core
+
 from .lib import fusionAddInUtils as futil
 
 DEBUG = False
@@ -28,4 +30,6 @@ my_panel_name = "Power Tools"
 my_panel_after = ""
 
 # Palettes
-assembly_builder_palette_id = f"{COMPANY_NAME.replace(' ', '_')}_{ADDIN_NAME}_assembly_builder_palette"
+assembly_builder_palette_id = (
+    f"{COMPANY_NAME.replace(' ', '_')}_{ADDIN_NAME}_assembly_builder_palette"
+)
