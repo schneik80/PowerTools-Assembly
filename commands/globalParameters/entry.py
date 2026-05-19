@@ -439,7 +439,16 @@ def _update_parameters_document(
     params_data_file,
     active_doc: adsk.core.Document,
 ) -> None:
-    """Open an existing parameters document, replace its user parameters, and save."""
+    """Open an existing parameters document and reconcile its user parameters
+    with the dialog's desired state, then save.
+
+    Reconcile rules:
+      • Name in dialog AND in document → update expression/comment in place
+        (preserves the UserParameter identity so downstream derive features
+        stay linked).
+      • Name in dialog only → add a new user parameter.
+      • Name in document only → user removed it from the dialog, so delete it.
+    """
     with futil.perf_timer("documents.open", "GP._update_params_doc"):
         params_doc = app.documents.open(params_data_file, False)
     try:
@@ -450,26 +459,48 @@ def _update_parameters_document(
             raise RuntimeError(
                 "Could not obtain Design product from parameters document."
             )
-        n_existing = design.userParameters.count
+
+        user_params = design.userParameters
+        desired_by_name = {p["name"]: p for p in parameters}
+
+        # Snapshot existing names up front — the collection mutates as we delete.
+        existing_names = [user_params.item(i).name for i in range(user_params.count)]
+        names_to_delete = [n for n in existing_names if n not in desired_by_name]
+
         with futil.perf_timer(
-            f"deleteMe loop (n={n_existing})", "GP._update_params_doc"
+            f"deleteMe loop (n={len(names_to_delete)})", "GP._update_params_doc"
         ):
-            while design.userParameters.count > 0:
-                design.userParameters.item(0).deleteMe()
+            for name in names_to_delete:
+                victim = user_params.itemByName(name)
+                if victim is None:
+                    continue
+                if not victim.deleteMe():
+                    futil.log(
+                        f"{CMD_NAME}: could not delete parameter '{name}' "
+                        "(it may still be referenced) — leaving in place"
+                    )
+
         n_new = len(parameters)
         with futil.perf_timer(
-            f"userParameters.add loop (n={n_new})", "GP._update_params_doc"
+            f"reconcile userParameters loop (n={n_new})", "GP._update_params_doc"
         ):
             for p in parameters:
                 raw_comment = p["comment"].strip()
                 comment = f"{_PARAM_TAG} {raw_comment}".strip()
-                value_input = adsk.core.ValueInput.createByString(
-                    f"{p['value']} {p['unit']}"
-                )
-                user_param = design.userParameters.add(
-                    p["name"], value_input, p["unit"], comment
-                )
-                user_param.isFavorite = True
+                expression = f"{p['value']} {p['unit']}"
+
+                existing = user_params.itemByName(p["name"])
+                if existing is not None:
+                    existing.expression = expression
+                    existing.comment = comment
+                    existing.isFavorite = True
+                else:
+                    value_input = adsk.core.ValueInput.createByString(expression)
+                    new_param = user_params.add(
+                        p["name"], value_input, p["unit"], comment
+                    )
+                    new_param.isFavorite = True
+
         with futil.perf_timer("document.save", "GP._update_params_doc"):
             params_doc.save("Global Parameters — PowerTools")
         cache.write_param_set_sidecar(params_data_file, parameters, CMD_NAME)

@@ -253,12 +253,23 @@ def _derive_into_active(data_file, active_doc: adsk.core.Document) -> None:
     - The source document must remain OPEN until all post-creation edits are done
     - The timeline marker is moved to position 0 before adding the derive feature
       so it is always inserted first; the marker is restored to the end afterward
+
+    After the derive completes, any user parameters that were not present in
+    the active design beforehand are marked isFavorite = True. Derived params
+    do not inherit the favorite flag automatically, and they must be favorites
+    for chained derives (and the Favorites section of the Parameters dialog)
+    to pick them up.
     """
     active_design = adsk.fusion.Design.cast(
         active_doc.products.itemByProductType("DesignProductType")
     )
     if active_design is None:
         raise RuntimeError("Could not obtain Design product from the active document.")
+
+    active_user_params = active_design.userParameters
+    pre_derive_names = {
+        active_user_params.item(i).name for i in range(active_user_params.count)
+    }
 
     with futil.perf_timer("documents.open", "LGP._derive_into_active"):
         params_doc = app.documents.open(data_file, False)
@@ -280,6 +291,19 @@ def _derive_into_active(data_file, active_doc: adsk.core.Document) -> None:
         with futil.perf_timer("derive_features.add", "LGP._derive_into_active"):
             derive_features.add(derive_input)
         timeline.markerPosition = timeline.count
+
+        with futil.perf_timer("mark derived favorites", "LGP._derive_into_active"):
+            for i in range(active_user_params.count):
+                p = active_user_params.item(i)
+                if p.name in pre_derive_names:
+                    continue
+                try:
+                    p.isFavorite = True
+                except Exception:
+                    futil.log(
+                        f"{CMD_NAME}: could not mark derived parameter "
+                        f"'{p.name}' as favorite — skipping"
+                    )
 
         futil.log(f"{CMD_NAME}: parameters derived from '{data_file.name}'")
     finally:
