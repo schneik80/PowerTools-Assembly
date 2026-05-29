@@ -34,8 +34,9 @@ The following commands are included in this add-in:
 | [Document Refresh](./docs/Document%20Refresh.md) | Data Workflow | QAT &rsaquo; File dropdown | Closes and reopens the active document to load the latest version from the Hub. |
 | [Bottom-Up Update](./docs/Bottom-Up%20Update.md) | Data Workflow | Design &rsaquo; Utilities &rsaquo; Power Tools | Saves and updates all references in the open assembly from the bottom up, processing components in dependency order. |
 | [Assembly Statistics](./docs/Assembly%20Statistics.md) | Information | Design &rsaquo; Utilities &rsaquo; Power Tools | Displays a summary dialog of component counts, reference states, joints, and assembly nesting depth. |
+| [New Assembly](./docs/New%20Assembly.md) | Productivity | Design &rsaquo; Assembly &rsaquo; Insert (auto-opens on a new empty Assembly) | Docked quick-start palette for a new assembly: create external Part/Hybrid/Assembly components in place, hand off to Assembly Builder or Global Parameters, and insert components from galleries of open and recent documents. |
 | [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Visual node editor for designing an assembly hierarchy on a new or empty document, then generating every external component — with correct design intent, shared references, and derived global parameters — in one step. |
-| [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
+| [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; Assembly &rsaquo; Insert (or Solid &rsaquo; Insert) | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
 | [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
 | [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
 | [Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md) | Global Parameters | QAT &rsaquo; File &rsaquo; PowerTools Settings | Force a full Hub scan and rewrite the local `gp_folder` / `gp_docs` caches for the active project when parameter sets appear missing or stale. |
@@ -129,6 +130,20 @@ For full usage details, see [Assembly Statistics](./docs/Assembly%20Statistics.m
 ---
 
 ## Productivity commands
+
+### New Assembly
+
+**[New Assembly](./docs/New%20Assembly.md)** opens a docked quick-start palette that helps you populate a brand-new assembly. It appears automatically when you create a new, empty design with **Assembly** design intent, and can also be opened on demand from the **New Assembly** button in the **Assembly** tab's **Insert** panel.
+
+- **Create in place** — name a component, choose **Part**, **Hybrid**, or **Assembly** intent, and generate an external component in the active design with the correct intent applied.
+- **Insert from Open** — a thumbnail gallery of your currently-open documents; click a card to insert it as a referenced component. By default only top-level documents you opened directly are listed; **Show referenced children** also lists the sub-assemblies and parts Fusion loaded as references.
+- **Insert from Recent** — a thumbnail gallery of recently-used documents that are not currently open, newest first, backed by a small local cache.
+- **Hand off** — jump straight to **Assembly Builder** or **Global Parameters** without leaving the palette.
+- Top-level vs. referenced documents are distinguished instantly via the Fusion API (no cloud lookup); thumbnails are cached on disk so the Recent gallery shows previews for closed documents. Palette theme follows the Fusion UI theme (including "match OS").
+
+**Requirements:** An active Fusion 3D Design. Automatic launch requires a new, empty, Assembly-intent document; inserting a document requires it to be saved to a Hub.
+
+For full usage details, see [New Assembly](./docs/New%20Assembly.md).
 
 ### Assembly Builder
 

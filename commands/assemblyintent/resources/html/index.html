@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>New Assembly</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark">
+    <header class="topbar">
+        <div class="title">New Assembly</div>
+        <div class="doc-name" id="docName"></div>
+    </header>
+
+    <main class="sections">
+        <!-- Section 1: Create -->
+        <section class="card">
+            <h2 class="card-title">Create</h2>
+            <div class="action-row">
+                <div class="create-row">
+                    <input type="text"
+                           id="newCompName"
+                           placeholder="Component name"
+                           autocomplete="off" />
+                    <select id="newCompIntent">
+                        <option value="part" selected>Part</option>
+                        <option value="hybrid">Hybrid</option>
+                        <option value="assembly">Assembly</option>
+                    </select>
+                    <button id="btnCreateComp" class="btn primary">
+                        New Component
+                    </button>
+                </div>
+                <div class="hint">
+                    Creates an external <span id="intentLabel">part</span>
+                    component in this assembly.
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="action-row">
+                <button id="btnAssemblyBuilder" class="btn">
+                    Assembly Builder…
+                </button>
+                <div class="hint">
+                    Closes this dialog and opens Assembly Builder to design a
+                    multi-level hierarchy.
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="action-row">
+                <button id="btnGlobalParameters" class="btn">
+                    Global Parameters…
+                </button>
+                <div class="hint">
+                    Closes this dialog and opens Global Parameters for this
+                    project.
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Insert (tabbed: Open / Recent) -->
+        <section class="card insert-card">
+            <div class="tabs" role="tablist">
+                <button class="tab active" data-tab="open" role="tab"
+                        aria-selected="true">
+                    Open<span class="tab-count" id="openCount"></span>
+                </button>
+                <button class="tab" data-tab="recent" role="tab"
+                        aria-selected="false">
+                    Recent<span class="tab-count" id="recentCount"></span>
+                </button>
+                <button class="refresh" id="btnRefresh" title="Refresh"
+                        style="margin-left:auto">↻</button>
+            </div>
+            <div class="tab-panes">
+                <div class="tab-pane open-pane active"
+                     data-tab="open" role="tabpanel">
+                    <label class="filter-row" title="When off, only top-level documents you opened directly are listed. When on, reference-loaded sub-assemblies and parts of open assemblies are shown too.">
+                        <input type="checkbox" id="openShowChildren" />
+                        <span>Show referenced children</span>
+                    </label>
+                    <div class="gallery" id="openGallery">
+                        <div class="empty" id="openEmpty">No other open documents.</div>
+                    </div>
+                </div>
+                <div class="gallery tab-pane" id="recentGallery"
+                     data-tab="recent" role="tabpanel">
+                    <div class="empty" id="recentEmpty">No recent documents yet.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="init.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

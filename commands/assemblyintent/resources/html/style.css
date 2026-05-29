@@ -1,0 +1,322 @@
+/* Theme variables — mirror Assembly Builder's palette for visual consistency. */
+:root {
+    --bg-primary: #2A3442;
+    --bg-panel: #323E50;
+    --bg-card: #2f3a4a;
+    --bg-input: #1e2a38;
+    --bg-hover: #3a4658;
+    --border-color: #4a5568;
+    --border-strong: #5a6678;
+    --text-primary: #ffffff;
+    --text-secondary: #a0aec0;
+    --text-muted: #718096;
+    --accent: #0696d7;
+    --accent-hover: #0aa3e8;
+    --badge-part: #38a169;
+    --badge-hybrid: #d69e2e;
+    --badge-assembly: #5a67d8;
+    --shadow-card: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+body.light {
+    --bg-primary: #f4f4f4;
+    --bg-panel: #ffffff;
+    --bg-card: #ffffff;
+    --bg-input: #f0f0f0;
+    --bg-hover: #e8e8e8;
+    --border-color: #d1d5db;
+    --border-strong: #9ca3af;
+    --text-primary: #333333;
+    --text-secondary: #555555;
+    --text-muted: #888888;
+    --accent: #0696d7;
+    --accent-hover: #0580b8;
+    --badge-part: #38a169;
+    --badge-hybrid: #b7791f;
+    --badge-assembly: #5a67d8;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    font-family: 'Montserrat', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;          /* body never scrolls; only the insert pane does */
+}
+
+.topbar {
+    padding: 10px 14px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+.topbar .title { font-weight: 600; font-size: 14px; }
+.topbar .doc-name { color: var(--text-secondary); font-size: 12px; }
+
+.sections {
+    flex: 1;
+    min-height: 0;             /* let flex children shrink instead of overflowing body */
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;          /* scroll lives inside the insert pane, not here */
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    box-shadow: var(--shadow-card);
+}
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.card-header .card-title { margin-bottom: 0; }
+
+.action-row { display: flex; flex-direction: column; gap: 4px; }
+.create-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+}
+
+input[type="text"], select {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-family: inherit;
+}
+input[type="text"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.btn {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:active { background: var(--bg-hover); }
+.btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+}
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.refresh {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+.refresh:hover { border-color: var(--accent); color: var(--text-primary); }
+
+.hint {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.divider {
+    border-top: 1px dashed var(--border-color);
+    margin: 10px 0;
+}
+
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+    gap: 6px;
+}
+
+.doc-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.15s, transform 0.05s;
+    min-height: 40px;
+}
+.doc-card:hover { border-color: var(--accent); }
+.doc-card:active { transform: scale(0.98); }
+
+.doc-thumb {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.doc-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.doc-thumb.broken::after {
+    content: '';
+    width: 36%;
+    height: 36%;
+    background: var(--border-strong);
+    -webkit-mask: radial-gradient(circle, transparent 35%, #000 36%) center / 100% 100% no-repeat;
+            mask: radial-gradient(circle, transparent 35%, #000 36%) center / 100% 100% no-repeat;
+    opacity: 0.45;
+    border-radius: 50%;
+}
+
+.doc-card .doc-card-name {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+.badge {
+    align-self: flex-start;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    line-height: 1;
+}
+.badge.part { background: var(--badge-part); }
+.badge.hybrid { background: var(--badge-hybrid); }
+.badge.assembly { background: var(--badge-assembly); }
+
+.empty {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+    padding: 12px;
+    text-align: center;
+}
+
+/* Combined Insert card: fills remaining palette height, scrolls inside. */
+.insert-card {
+    flex: 1;
+    min-height: 0;             /* allow flex shrinking down to scroll region */
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 6px;       /* slimmer footer so scroll has more room */
+}
+
+.tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+.tab {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    margin-bottom: -1px;       /* overlap the card's border-bottom */
+    transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+}
+.tab .tab-count {
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 4px;
+}
+
+/* Scroll container holding both panes. Only the active pane renders content,
+   so the scrollbar tracks just that pane's overflow. */
+.tab-panes {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;        /* breathing room before the scrollbar gutter */
+}
+.tab-pane { display: none; }
+.tab-pane.active { display: grid; }
+
+/* Open pane wraps a filter row above its gallery, so it stacks as a single
+   column rather than inheriting the gallery's multi-column grid. */
+.open-pane.active { display: flex; flex-direction: column; gap: 8px; }
+
+.filter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+.filter-row input { cursor: pointer; }
+
+/* Thin, themed scrollbar (WebKit/CEF). */
+.tab-panes::-webkit-scrollbar { width: 6px; }
+.tab-panes::-webkit-scrollbar-track { background: transparent; }
+.tab-panes::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+.tab-panes::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

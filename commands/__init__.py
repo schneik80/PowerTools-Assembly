@@ -2,6 +2,7 @@
 # Copyright (C) 2022-2026 IMA LLC
 
 from .assemblybuilder import entry as assemblybuilder
+from .assemblyintent import entry as assemblyintent
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
@@ -17,12 +18,15 @@ from .refresh import entry as refresh
 # Fusion will automatically call the start() and stop() functions.
 commands = [
     assemblybuilder,
+    # insertSTEP must start before assemblyintent: the New Assembly launch
+    # button positions itself relative to the Insert STEP control.
+    insertSTEP,
+    assemblyintent,
     assemblystats,
     getandupdate,
     bottomupupdate,
     externalize,
     globalParameters,
-    insertSTEP,
     linkGlobalParameters,
     refmanager,
     refreshGlobalParametersCache,

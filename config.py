@@ -33,3 +33,6 @@ my_panel_after = ""
 assembly_builder_palette_id = (
     f"{COMPANY_NAME.replace(' ', '_')}_{ADDIN_NAME}_assembly_builder_palette"
 )
+assembly_intent_palette_id = (
+    f"{COMPANY_NAME.replace(' ', '_')}_{ADDIN_NAME}_assembly_intent_palette"
+)

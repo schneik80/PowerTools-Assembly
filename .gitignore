@@ -161,6 +161,9 @@ commands/relateddata/data.json
 
 # Generated per-launch palette init state (Assembly Builder)
 commands/assemblybuilder/resources/html/init.js
+
+# Generated per-launch palette init state (New Assembly)
+commands/assemblyintent/resources/html/init.js
 cache/
 .claude/
 .cursor/rules/
