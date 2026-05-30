@@ -6,6 +6,7 @@ from .assemblyintent import entry as assemblyintent
 from .assemblystats import entry as assemblystats
 from .getandupdate import entry as getandupdate
 from .bottomupupdate import entry as bottomupupdate
+from .componentwarn import entry as componentwarn
 from .externalize import entry as externalize
 from .globalParameters import entry as globalParameters
 from .insertSTEP import entry as insertSTEP
@@ -25,6 +26,7 @@ commands = [
     assemblystats,
     getandupdate,
     bottomupupdate,
+    componentwarn,
     externalize,
     globalParameters,
     linkGlobalParameters,
