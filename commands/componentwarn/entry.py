@@ -20,9 +20,7 @@
 # create the feature anyway, cancel it, or silence the warning for the active
 # document.
 #
-# Behaviour is inspired by Thomas Axelsson's MIT-licensed "NoComponentWarn"
-# Fusion 360 add-in; this is an independent reimplementation that follows the
-# PowerTools command/handler conventions.
+# Toggle access: QAT › File menu › PowerTools Settings › Enable/Disable Component Warning.
 
 import os
 import time

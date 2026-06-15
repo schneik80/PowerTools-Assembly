@@ -12,7 +12,7 @@ The command is a toggle: turn it on to monitor placement, turn it off to work wi
 - Catch features that reference a component other than the one currently being edited.
 - Optionally catch features created in a non-leaf component (a component that still has child occurrences).
 - Choose, per warning, to create the feature anyway, cancel the command, or silence the warning for the active document.
-- Toggle the entire guard on or off from the Power Tools panel.
+- Enable or disable the guard from **PowerTools Settings** in the QAT File menu.
 
 ## Prerequisites
 
@@ -22,14 +22,14 @@ The command is a toggle: turn it on to monitor placement, turn it off to work wi
 
 ## How to use Component Warning
 
-1. In the **Design** workspace, open the **Utilities** tab and locate the **Power Tools** panel.
-2. Select **Component Warning** to enable the guard. The toggle stays checked while it is active.
+1. Open the **QAT File menu** (the file icon at the top-left of Fusion) and expand **PowerTools Settings**.
+2. Click **Enable Component Warning**. The menu item changes to **Disable Component Warning** while the guard is active.
 3. Continue modeling as usual. If you start a feature-creation command while editing the root component (or referencing another component), a warning dialog appears.
 4. In the warning dialog, choose one of the following:
    - **Yes** — create the feature anyway. To avoid a duplicate prompt, the guard pauses briefly after this choice.
    - **No** — stop warning for the active document for the rest of the session.
    - **Cancel** — cancel the command so no feature is created.
-5. To turn the guard off entirely, select **Component Warning** again to clear the toggle.
+5. To turn the guard off entirely, open **PowerTools Settings** again and click **Disable Component Warning**.
 
 > **Note:** Documents silenced with **No** are remembered only for the current Fusion session. Reopening the document restores warnings.
 
@@ -47,7 +47,7 @@ The set of watched commands and the only-leaf option are defined at the top of `
 
 ## Access
 
-The **Component Warning** toggle is located in the **Power Tools** panel of the **Utilities** tab in the Autodesk Fusion **Design** workspace.
+**Component Warning** is accessed from the **QAT File menu › PowerTools Settings**. The menu item label reflects the current state: **Enable Component Warning** when the guard is off, **Disable Component Warning** when it is on. The PowerTools Settings submenu is shared with other PowerTools add-ins and is created automatically on first use.
 
 ## Architecture
 
@@ -87,12 +87,13 @@ C4Component
 sequenceDiagram
   autonumber
   actor User
-  participant Panel as Power Tools panel
+  participant Menu as QAT › PowerTools Settings
   participant Cmd as Component Warning
   participant API as Fusion API
 
-  User->>Panel: Toggle Component Warning on
-  Panel->>Cmd: command_created (isChecked = true)
+  User->>Menu: Click "Enable Component Warning"
+  Menu->>Cmd: command_execute fires
+  Cmd->>Cmd: _enabled = True; label → "Disable Component Warning"
   Cmd->>API: Attach commandStarting listener
   User->>API: Start a feature command (e.g. Extrude)
   API->>Cmd: command_starting fires

@@ -37,7 +37,7 @@ The following commands are included in this add-in:
 | [New Assembly](./docs/New%20Assembly.md) | Productivity | Design &rsaquo; Assembly &rsaquo; Insert (auto-opens on a new empty Assembly) | Docked quick-start palette for a new assembly: create external Part/Hybrid/Assembly components in place, hand off to Assembly Builder or Global Parameters, and insert components from galleries of open and recent documents. |
 | [Assembly Builder](./docs/Assembly%20Builder.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Visual node editor for designing an assembly hierarchy on a new or empty document, then generating every external component — with correct design intent, shared references, and derived global parameters — in one step. |
 | [Insert STEP File](./docs/Insert%20Step.md) | Productivity | Design &rsaquo; Assembly &rsaquo; Insert (or Solid &rsaquo; Insert) | Opens a local file browser and inserts a STEP or F3D file as an inline component in the active design. |
-| [Component Warning](./docs/Component%20Warning.md) | Productivity | Design &rsaquo; Utilities &rsaquo; Power Tools | Toggleable guard that warns before a feature is created in the root component, in a non-leaf component, or referencing another component. |
+| [Component Warning](./docs/Component%20Warning.md) | Productivity | QAT &rsaquo; File &rsaquo; PowerTools Settings | Toggleable guard that warns before a feature is created in the root component, in a non-leaf component, or referencing another component. |
 | [Global Parameters](./docs/Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Create or edit a shared parameter set document in the active project's `_Global Parameters` folder; writes favorite parameters into the active document. |
 | [Link Global Parameters](./docs/Link%20Global%20Parameters.md) | Global Parameters | Design &rsaquo; Utilities &rsaquo; Power Tools | Derive a parameter set from the project's `_Global Parameters` folder into the active document as a Derive feature with favorite parameters. |
 | [Refresh Global Parameters Cache](./docs/Refresh%20Global%20Parameters%20Cache.md) | Global Parameters | QAT &rsaquo; File &rsaquo; PowerTools Settings | Force a full Hub scan and rewrite the local `gp_folder` / `gp_docs` caches for the active project when parameter sets appear missing or stale. |
@@ -179,8 +179,6 @@ For full usage details, see [Insert STEP File](./docs/Insert%20Step.md).
 - Optionally warns when a feature is created in a **non-leaf component** (off by default).
 - Each warning lets you **create anyway**, **cancel** the command, or **stop warning** for the active document this session.
 - Active only in the **Design** (Solid) workspace; **Part**-intent designs are skipped automatically. A short hold-off after "create anyway" prevents duplicate prompts from the Sketch command.
-
-This command is an independent reimplementation inspired by Thomas Axelsson's MIT-licensed *NoComponentWarn* Fusion add-in, rebuilt to follow the PowerTools command and event-handler conventions.
 
 **Requirements:** An Autodesk Fusion 3D Design with Assembly or Hybrid design intent must be active.
 
