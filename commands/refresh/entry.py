@@ -22,39 +22,20 @@ local_handlers = []
 
 # Executed when add-in is run.
 def start():
-    # Create a command Definition.
     cmd_def = ui.commandDefinitions.addButtonDefinition(
         CMD_ID, CMD_NAME, CMD_Description
     )
-
-    # Define an event handler for the command created event. It will be called when the button is clicked.
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    # ******** Add a button into the UI so the user can run the command. ********
-    # Get the target workspace the button will be created in.
-
-    qat = ui.toolbars.itemById("QAT")
-
-    # Get the drop-down that contains the file related commands.
-    fileDropDown = qat.controls.itemById("FileSubMenuCommand")
-
-    # Add a new button after the Export control.
-    control = fileDropDown.controls.addCommand(cmd_def, "ExportCommand", False)
+    file_dd = futil.get_qat_file_dropdown()
+    if file_dd:
+        control = file_dd.controls.addCommand(cmd_def, "ExportCommand", False)
 
 
 # Executed when add-in is stopped.
 def stop():
-    # Get the various UI elements for this command
-    qat = ui.toolbars.itemById("QAT")
-    fileDropDown = qat.controls.itemById("FileSubMenuCommand")
-    command_control = fileDropDown.controls.itemById(CMD_ID)
+    futil.remove_from_qat_file_dropdown(CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
-
-    # Delete the button command control
-    if command_control:
-        command_control.deleteMe()
-
-    # Delete the command definition
     if command_definition:
         command_definition.deleteMe()
 

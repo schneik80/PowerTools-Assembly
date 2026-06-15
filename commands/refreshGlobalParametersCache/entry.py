@@ -36,40 +36,13 @@ def start():
     )
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    # Add to PowerTools Settings submenu in File menu (QAT)
-    qat = ui.toolbars.itemById("QAT")
-    file_dropdown = adsk.core.DropDownControl.cast(
-        qat.controls.itemById("FileSubMenuCommand")
-    )
-
-    pt_settings_control = file_dropdown.controls.itemById(PT_SETTINGS_ID)
-    if not pt_settings_control:
-        pt_settings = file_dropdown.controls.addDropDown(
-            PT_SETTINGS_NAME, "", PT_SETTINGS_ID
-        )
-    else:
-        pt_settings = adsk.core.DropDownControl.cast(pt_settings_control)
-
-    pt_settings.controls.addCommand(cmd_def)
+    flyout = futil.get_or_create_qat_file_flyout(PT_SETTINGS_ID, PT_SETTINGS_NAME)
+    if flyout:
+        control = flyout.controls.addCommand(cmd_def)
+        control.isPromoted = IS_PROMOTED
 
 def stop():
-
-    qat = ui.toolbars.itemById("QAT")
-    file_dropdown = adsk.core.DropDownControl.cast(
-        qat.controls.itemById("FileSubMenuCommand")
-    )
-    pt_settings = adsk.core.DropDownControl.cast(
-        file_dropdown.controls.itemById(PT_SETTINGS_ID)
-    )
-
-    if pt_settings:
-        command_control = pt_settings.controls.itemById(CMD_ID)
-        if command_control:
-            command_control.deleteMe()
-
-        if pt_settings.controls.count == 0:
-            pt_settings.deleteMe()
-
+    futil.remove_from_qat_file_flyout(CMD_ID, PT_SETTINGS_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
     if command_definition:
         command_definition.deleteMe()

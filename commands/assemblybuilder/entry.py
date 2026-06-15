@@ -74,42 +74,21 @@ def start():
     )
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
-
-    control = panel.controls.addCommand(cmd_def)
-    control.isPromoted = IS_PROMOTED
+    panel = futil.get_or_create_panel(WORKSPACE_ID, TAB_ID, TAB_NAME, PANEL_ID, PANEL_NAME, PANEL_AFTER)
+    if panel:
+        control = panel.controls.addCommand(cmd_def)
+        control.isPromoted = IS_PROMOTED
 
 
 def stop():
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(PANEL_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    command_control = panel.controls.itemById(CMD_ID) if panel else None
-    command_definition = ui.commandDefinitions.itemById(CMD_ID)
     palette = ui.palettes.itemById(PALETTE_ID)
-
-    if command_control:
-        command_control.deleteMe()
-
-    if command_definition:
-        command_definition.deleteMe()
-
     if palette:
         palette.deleteMe()
 
-    if panel and panel.controls.count == 0:
-        panel.deleteMe()
-
-    if toolbar_tab and toolbar_tab.toolbarPanels.count == 0:
-        toolbar_tab.deleteMe()
+    futil.remove_from_panel(WORKSPACE_ID, PANEL_ID, TAB_ID, CMD_ID)
+    command_def = ui.commandDefinitions.itemById(CMD_ID)
+    if command_def:
+        command_def.deleteMe()
 
 
 def command_created(args: adsk.core.CommandCreatedEventArgs):

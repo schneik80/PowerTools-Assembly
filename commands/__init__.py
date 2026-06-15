@@ -15,6 +15,7 @@ from .refmanager import entry as refmanager
 from .refreshGlobalParametersCache import entry as refreshGlobalParametersCache
 from .refrences import entry as refrences
 from .refresh import entry as refresh
+from ..lib import fusionAddInUtils as futil
 
 # Fusion will automatically call the start() and stop() functions.
 commands = [
@@ -41,11 +42,17 @@ commands = [
 # The start function will be run when the add-in is started.
 def start():
     for command in commands:
-        command.start()
+        try:
+            command.start()
+        except Exception:
+            futil.handle_error(command.__name__)
 
 
 # Assumes you defined a "stop" function in each of your modules.
 # The stop function will be run when the add-in is stopped.
 def stop():
     for command in commands:
-        command.stop()
+        try:
+            command.stop()
+        except Exception:
+            futil.handle_error(command.__name__)

@@ -53,53 +53,26 @@ RESUME_STATUS_ID = "resume_status"  # Read-only status for resume behavior
 
 # Executed when add-in is run.
 def start():
-    # Remove any existing command/control for clean setup
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
-    command_control = panel.controls.itemById(CMD_ID)
-    if command_control:
-        command_control.deleteMe()
+    # Remove any stale command definition for clean setup
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
     if command_definition:
         command_definition.deleteMe()
-    # Create new command definition and control
     cmd_def = ui.commandDefinitions.addButtonDefinition(
         CMD_ID, CMD_NAME, CMD_Description, ICON_FOLDER
     )
     futil.add_handler(cmd_def.commandCreated, command_created)
-    control = panel.controls.addCommand(cmd_def)
-    control.isPromoted = IS_PROMOTED
+    panel = futil.get_or_create_panel(WORKSPACE_ID, TAB_ID, TAB_NAME, PANEL_ID, PANEL_NAME, PANEL_AFTER)
+    if panel:
+        control = panel.controls.addCommand(cmd_def)
+        control.isPromoted = IS_PROMOTED
 
 
 # Executed when add-in is stopped.
 def stop():
-    # Get the various UI elements for this command
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(PANEL_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    command_control = panel.controls.itemById(CMD_ID)
+    futil.remove_from_panel(WORKSPACE_ID, PANEL_ID, TAB_ID, CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
-
-    # Delete the button command control
-    if command_control:
-        command_control.deleteMe()
-
-    # Delete the command definition
     if command_definition:
         command_definition.deleteMe()
-
-    # Delete the panel if it is empty
-    if panel.controls.count == 0:
-        panel.deleteMe()
-
-    # Delete the tab if it is empty
-    if toolbar_tab.toolbarPanels.count == 0:
-        toolbar_tab.deleteMe()
 
 
 # Function to be called when a user clicks the corresponding button in the UI.
