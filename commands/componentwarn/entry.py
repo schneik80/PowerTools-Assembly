@@ -12,7 +12,9 @@
 #   * while a selection references a different component than the one being
 #     edited.
 #
-# The guard is a toggle in the Power Tools panel. While enabled and while the
+# The guard toggle lives in the "PowerTools Settings" flyout of the QAT File menu
+# as a regular button whose label flips between "Enable Component Warning" and
+# "Disable Component Warning". While enabled and while the
 # Design (Solid) workspace is active, it listens to ui.commandStarting and pops
 # a modal warning before the offending command runs. The warning lets the user
 # create the feature anyway, cancel it, or silence the warning for the active
@@ -22,12 +24,12 @@
 # Fusion 360 add-in; this is an independent reimplementation that follows the
 # PowerTools command/handler conventions.
 
+import os
 import time
 
 import adsk.core
 import adsk.fusion
 
-from ... import config
 from ...lib import fusionAddInUtils as futil
 
 app = adsk.core.Application.get()
@@ -41,13 +43,13 @@ CMD_Description = (
 )
 IS_PROMOTED = False
 
-# UI placement (shared Power Tools panel in the Design workspace Utilities tab).
-WORKSPACE_ID = config.design_workspace
-TAB_ID = config.tools_tab_id
-TAB_NAME = config.my_tab_name
-PANEL_ID = config.my_panel_id
-PANEL_NAME = config.my_panel_name
-PANEL_AFTER = config.my_panel_after
+# UI placement: the "PowerTools Settings" flyout in the QAT File menu. The flyout
+# is shared across PowerTools add-ins, so it is created only if absent and removed
+# only once empty (mirroring refreshGlobalParametersCache).
+ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "")
+
+PT_SETTINGS_ID = "PTSettings"
+PT_SETTINGS_NAME = "PowerTools Settings"
 
 # Workspace the guard is active in. Outside this workspace the commandStarting
 # listener is detached so we never interfere with non-design environments.
@@ -104,7 +106,7 @@ local_handlers = []
 _monitor_handlers = []
 _starting_handler = None
 
-# Module state.
+# Module state. Starts enabled; toggled in-memory per session.
 _enabled = True
 # Documents the user silenced via "Stop warning". In-memory only (per session),
 # keyed by Document object identity.
@@ -114,28 +116,41 @@ _last_continue_time = 0.0
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _toggle_label() -> str:
+    return f"Disable {CMD_NAME}" if _enabled else f"Enable {CMD_NAME}"
+
+
+# ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 
 
 def start():
-    # A check-box definition gives the toggle a visible on/off state in the
-    # toolbar; it starts checked because the guard defaults to enabled.
-    cmd_def = ui.commandDefinitions.addCheckBoxDefinition(
-        CMD_ID, CMD_NAME, CMD_Description, _enabled
+    cmd_def = ui.commandDefinitions.addButtonDefinition(
+        CMD_ID, _toggle_label(), CMD_Description, ICON_FOLDER
     )
     futil.add_handler(cmd_def.commandCreated, command_created)
 
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    if toolbar_tab is None:
-        toolbar_tab = workspace.toolbarTabs.add(TAB_ID, TAB_NAME)
+    # Add the toggle to the shared "PowerTools Settings" submenu in the QAT File
+    # menu, creating that submenu only if no other PowerTools add-in already has.
+    qat = ui.toolbars.itemById("QAT")
+    file_dropdown = adsk.core.DropDownControl.cast(
+        qat.controls.itemById("FileSubMenuCommand")
+    )
 
-    panel = toolbar_tab.toolbarPanels.itemById(PANEL_ID)
-    if panel is None:
-        panel = toolbar_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME, PANEL_AFTER, False)
+    pt_settings_control = file_dropdown.controls.itemById(PT_SETTINGS_ID)
+    if not pt_settings_control:
+        pt_settings = file_dropdown.controls.addDropDown(
+            PT_SETTINGS_NAME, "", PT_SETTINGS_ID
+        )
+    else:
+        pt_settings = adsk.core.DropDownControl.cast(pt_settings_control)
 
-    control = panel.controls.addCommand(cmd_def)
+    control = pt_settings.controls.addCommand(cmd_def)
     control.isPromoted = IS_PROMOTED
 
     # Attach/detach the guard as the user moves in and out of the Solid
@@ -152,23 +167,27 @@ def start():
 def stop():
     _detach_monitor()
 
-    workspace = ui.workspaces.itemById(WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(PANEL_ID)
-    toolbar_tab = workspace.toolbarTabs.itemById(TAB_ID)
-    command_control = panel.controls.itemById(CMD_ID)
-    command_definition = ui.commandDefinitions.itemById(CMD_ID)
+    qat = ui.toolbars.itemById("QAT")
+    file_dropdown = adsk.core.DropDownControl.cast(
+        qat.controls.itemById("FileSubMenuCommand")
+    )
+    pt_settings = adsk.core.DropDownControl.cast(
+        file_dropdown.controls.itemById(PT_SETTINGS_ID)
+    )
 
-    if command_control:
-        command_control.deleteMe()
+    if pt_settings:
+        command_control = pt_settings.controls.itemById(CMD_ID)
+        if command_control:
+            command_control.deleteMe()
+
+        # The "PowerTools Settings" submenu is shared; only remove it once this
+        # command was its last occupant.
+        if pt_settings.controls.count == 0:
+            pt_settings.deleteMe()
+
+    command_definition = ui.commandDefinitions.itemById(CMD_ID)
     if command_definition:
         command_definition.deleteMe()
-
-    # The Power Tools panel/tab are shared; only remove them if this command
-    # was the last occupant.
-    if panel.controls.count == 0:
-        panel.deleteMe()
-    if toolbar_tab.toolbarPanels.count == 0:
-        toolbar_tab.deleteMe()
 
     global local_handlers
     local_handlers = []
@@ -180,14 +199,21 @@ def stop():
 
 
 def command_created(args: adsk.core.CommandCreatedEventArgs):
-    """Fires each time the user clicks the check-box. Read the new state and
-    attach or detach the guard to match."""
-    global _enabled
-    checkbox = adsk.core.CheckBoxControlDefinition.cast(
-        args.command.parentCommandDefinition.controlDefinition
+    futil.add_handler(
+        args.command.execute,
+        command_execute,
+        local_handlers=local_handlers,
     )
-    _enabled = checkbox.isChecked
+
+
+def command_execute(args: adsk.core.CommandEventArgs):
+    global _enabled
+    _enabled = not _enabled
     futil.log(f"{CMD_NAME}: {'enabled' if _enabled else 'disabled'}")
+
+    cmd_def = ui.commandDefinitions.itemById(CMD_ID)
+    if cmd_def:
+        cmd_def.name = _toggle_label()
 
     in_solid = app.isStartupComplete and ui.activeWorkspace.id == SOLID_WORKSPACE_ID
     if _enabled and in_solid:
