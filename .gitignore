@@ -20,16 +20,12 @@ sdist/
 var/
 wheels/
 pip-wheel-metadata/
-share/python-wheels/
+share/python-wlocks/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-# *.manifest
 *.spec
 
 # Installer logs
@@ -46,25 +42,24 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-*.py,cover
+*.py.cover
 .hypothesis/
 .pytest_cache/
 
 # Translations
-# *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
+# Flask stuff
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Scrapy stuff
 .scrapy
 
 # Sphinx documentation
@@ -83,13 +78,6 @@ ipython_config.py
 # pyenv
 .python-version
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
 # celery beat schedule file
 celerybeat-schedule
 
@@ -105,37 +93,22 @@ ENV/
 env.bak/
 venv.bak/
 
-# Spyder project settings
+# IDE project settings
 .spyderproject
 .spyproject
-
-# Rope project settings
 .ropeproject
+.vscode/
 
-# mkdocs documentation
+# Documentation
 /site
-
-# mypy
 .mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
 .pyre/
 
-#vscode stuff
-.vscode/
-.DS_Store
-
-# General
+# macOS junk (consolidated)
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# Thumbnails
 ._*
-
-# Files that might appear in the root of a volume
 .DocumentRevisions-V100
 .fseventsd
 .Spotlight-V100
@@ -143,28 +116,19 @@ dmypy.json
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
-
-# Directories potentially created on remote AFP share
 .AppleDB
 .AppleDesktop
 Network Trash Folder
-
-#Temporary Items
 .apdisk
 
-#user specific data files
+# Generated files
 docs.json
 data.json
 hub.json
 commands/relateddata/docs.json
 commands/relateddata/data.json
-
-# Generated per-launch palette init state (Assembly Builder)
 commands/assemblybuilder/resources/html/init.js
-
-# Generated per-launch palette init state (New Assembly)
 commands/assemblyintent/resources/html/init.js
 cache/
 .claude/
 .cursor/rules/
-.github/
