@@ -9,6 +9,7 @@ from .bottomupupdate import entry as bottomupupdate
 from .componentwarn import entry as componentwarn
 from .externalize import entry as externalize
 from .globalParameters import entry as globalParameters
+from .inferconstraints import entry as inferconstraints
 from .insertSTEP import entry as insertSTEP
 from .linkGlobalParameters import entry as linkGlobalParameters
 from .refmanager import entry as refmanager
@@ -30,6 +31,7 @@ commands = [
     componentwarn,
     externalize,
     globalParameters,
+    inferconstraints,
     linkGlobalParameters,
     refmanager,
     refreshGlobalParametersCache,
